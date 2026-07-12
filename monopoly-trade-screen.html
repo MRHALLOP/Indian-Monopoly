@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- skill:chrome -->
+<style>
+/* Credit line — bottom-right */
+.design-ui-credit {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  font: 11px/1 system-ui, sans-serif;
+  color: rgba(128,128,128,0.5);
+  pointer-events: none;
+  z-index: 2147483647;
+  transition: opacity 0.4s ease;
+  user-select: none;
+  letter-spacing: 0.02em;
+}
+
+/* Hide chrome on touch devices */
+@media (hover: none) {
+  .design-ui-credit { display: none; }
+}
+
+/* Print fixes */
+@media print {
+  * {
+    transition: none !important;
+    animation: none !important;
+    box-shadow: none !important;
+  }
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .design-ui-credit { display: none !important; }
+}
+
+</style>
+<script>
+(function () {
+    // Design-ui pages are single compositions, so the whole body is editable.
+    function markEditable() {
+        document.body.classList.add('artifact-editable');
+    }
+
+    // Credit badge with idle-fade. Hover devices only.
+    function initChromeUI() {
+        if (!matchMedia('(hover: hover)').matches) return;
+
+        var credit = document.createElement('div');
+        credit.className = 'design-ui-credit';
+        credit.setAttribute('aria-hidden', 'true');
+        credit.innerHTML = '\u{1F49C} by ClickUp Brain';
+        document.body.appendChild(credit);
+
+        var timer = null;
+        var fade = function (out) { credit.style.opacity = out ? '0' : ''; };
+        fade(true);
+        var show = function () {
+            fade(false);
+            clearTimeout(timer);
+            timer = setTimeout(function () { fade(true); }, 3000);
+        };
+        document.addEventListener('mousemove', show);
+        show();
+    }
+
+    function init() {
+        markEditable();
+        initChromeUI();
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+
+</script>
+<!-- /skill:chrome -->
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Deal on the Table</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:oklch(24% .035 305); --muted:oklch(49% .035 305); --paper:oklch(97% .018 95);
+  --paper-2:oklch(93% .03 95); --line:oklch(83% .035 305); --purple:oklch(49% .19 307);
+  --purple-dark:oklch(35% .16 307); --coral:oklch(68% .18 28); --cyan:oklch(72% .13 215);
+  --yellow:oklch(84% .16 87); --green:oklch(67% .15 151); --red:oklch(61% .19 26);
+  --shadow:0 18px 50px oklch(25% .04 305 / .13); --ease:cubic-bezier(.16,1,.3,1);
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:oklch(88% .035 305);color:var(--ink);font-family:"DM Sans",system-ui,sans-serif;font-optical-sizing:auto;display:grid;place-items:center;padding:24px}
+.screen{position:relative;isolation:isolate;overflow:hidden;width:min(100%,1600px);aspect-ratio:16/9;min-height:620px;background:var(--paper);box-shadow:var(--shadow);border:1px solid oklch(78% .04 305);display:grid;grid-template-rows:auto 1fr auto}
+.screen:before{content:"";position:absolute;inset:0;z-index:-2;background-image:radial-gradient(circle at 1px 1px,oklch(44% .04 305 / .13) 1px,transparent 1px);background-size:22px 22px}
+.screen:after{content:"";position:absolute;z-index:-1;width:420px;height:420px;border:72px solid var(--yellow);border-radius:50%;right:-210px;top:80px;opacity:.45}
+.topbar{height:84px;padding:0 44px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;border-bottom:1px solid var(--line);background:oklch(97% .018 95)}
+.game-mark{font:400 22px/1 "Archivo Black",sans-serif;letter-spacing:-.04em}.game-mark span{color:var(--purple)}
+.round{justify-self:center;font-size:14px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.players{justify-self:end;display:flex;align-items:center;gap:9px}.mini{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;color:oklch(98% .01 95);font-weight:800;font-size:12px;border:3px solid var(--paper);box-shadow:0 0 0 1px var(--line)}
+.m1{background:var(--purple)}.m2{background:var(--coral)}.m3{background:var(--cyan);color:var(--ink)}.m4{background:var(--green)}
+.main{padding:34px 54px 30px;display:grid;grid-template-rows:auto 1fr;gap:22px;min-height:0}
+.heading{text-align:center;position:relative}.eyebrow{display:inline-flex;align-items:center;gap:9px;color:var(--purple);font-size:13px;font-weight:800;letter-spacing:.13em;text-transform:uppercase}.eyebrow:before,.eyebrow:after{content:"";width:32px;height:2px;background:var(--purple)}
+h1{margin:6px 0 0;font:400 clamp(35px,4.15vw,66px)/.95 "Archivo Black",sans-serif;letter-spacing:-.055em;text-wrap:balance}
+.trade-stage{display:grid;grid-template-columns:minmax(260px,1fr) minmax(390px,1.5fr) minmax(260px,1fr);align-items:stretch;gap:20px;min-height:0}
+.party{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px 18px;background:var(--paper-2);border:1px solid var(--line)}
+.party.offerer{transform:rotate(-1.2deg);box-shadow:-9px 10px 0 var(--purple)}.party.receiver{transform:rotate(1.2deg);box-shadow:9px 10px 0 var(--coral)}
+.role{font-size:12px;font-weight:800;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);margin-bottom:12px}.avatar{width:clamp(82px,8vw,128px);aspect-ratio:1;border-radius:50%;display:grid;place-items:center;font:400 clamp(34px,4vw,58px)/1 "Archivo Black";color:oklch(98% .01 95);margin-bottom:16px;position:relative}
+.offerer .avatar{background:var(--purple)}.receiver .avatar{background:var(--coral)}.avatar:after{content:"";position:absolute;inset:-8px;border:2px dashed currentColor;border-radius:50%;opacity:.45}
+.name{font:400 clamp(23px,2.25vw,36px)/1 "Archivo Black";letter-spacing:-.04em}.wallet{margin-top:8px;font-size:16px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums}.wallet strong{color:var(--ink)}
+.deal{display:grid;grid-template-rows:1fr auto 1fr;align-items:center;background:oklch(99% .008 95);border:2px solid var(--ink);padding:18px 26px;box-shadow:0 10px 0 var(--ink)}
+.bundle{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:18px}.bundle.reverse{grid-template-columns:1fr auto;text-align:right}.bundle.reverse .bundle-copy{order:1}.bundle.reverse .icon{order:2}
+.icon{width:64px;height:64px;display:grid;place-items:center;border-radius:18px;background:var(--yellow);font-size:31px;transform:rotate(-4deg)}.reverse .icon{background:var(--cyan);transform:rotate(4deg)}
+.bundle-label{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}.bundle-title{font:400 clamp(24px,2.35vw,38px)/1.05 "Archivo Black";letter-spacing:-.04em;margin-top:5px}.bundle-meta{font-size:14px;color:var(--muted);font-weight:600;margin-top:5px}
+.swap{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px;margin:4px 0}.swap:before,.swap:after{content:"";height:1px;background:var(--line)}.swap-badge{width:44px;height:44px;border-radius:50%;background:var(--ink);color:var(--paper);display:grid;place-items:center;font-size:21px;font-weight:900}
+.footer{min-height:92px;padding:18px 44px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;background:var(--purple-dark);color:oklch(95% .015 95)}
+.phone-note{display:flex;align-items:center;gap:12px;font-size:15px;font-weight:700}.phone{width:25px;height:39px;border:2px solid currentColor;border-radius:6px;position:relative}.phone:after{content:"";position:absolute;width:4px;height:4px;border-radius:50%;background:currentColor;bottom:3px;left:9px}
+.timer{text-align:center}.timer-label{display:block;font-size:11px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:oklch(79% .05 305)}.time{font:400 28px/1 "Archivo Black";font-variant-numeric:tabular-nums;margin-top:3px}
+.status{justify-self:end;display:flex;align-items:center;gap:10px;font-size:14px;font-weight:800}.pulse{width:10px;height:10px;border-radius:50%;background:var(--yellow);box-shadow:0 0 0 5px oklch(84% .16 87 / .18);animation:pulse 1.7s var(--ease) infinite}
+.stamp{position:absolute;top:108px;right:58px;transform:rotate(6deg);border:2px solid var(--red);color:var(--red);padding:6px 10px;font:400 13px/1 "Archivo Black";letter-spacing:.08em;text-transform:uppercase;background:var(--paper)}
+@keyframes pulse{0%,100%{transform:scale(.85);opacity:.65}50%{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important}}
+@media (max-width:900px){body{padding:0}.screen{min-height:100vh;aspect-ratio:auto}.topbar{padding:0 20px}.players{display:none}.main{padding:24px 20px}.trade-stage{grid-template-columns:1fr 1fr;grid-template-areas:"left right" "deal deal"}.party.offerer{grid-area:left}.party.receiver{grid-area:right}.deal{grid-area:deal;grid-template-columns:1fr auto 1fr;grid-template-rows:auto}.swap{grid-template-columns:auto;margin:0 14px}.swap:before,.swap:after{display:none}.bundle.reverse{grid-template-columns:auto 1fr;text-align:left}.bundle.reverse .bundle-copy{order:2}.bundle.reverse .icon{order:1}.footer{padding:16px 20px}.status{display:none}.stamp{display:none}}
+</style>
+</head>
+<body>
+<main class="screen" aria-label="Trading offer display">
+  <header class="topbar">
+    <div class="game-mark">BLOCK<span>PARTY</span></div>
+    <div class="round">Round 8 · Trade phase</div>
+    <div class="players" aria-label="Players in the room"><div class="mini m1">AK</div><div class="mini m2">RM</div><div class="mini m3">JS</div><div class="mini m4">PN</div></div>
+  </header>
+
+  <section class="main">
+    <div class="heading">
+      <div class="eyebrow">Incoming offer</div>
+      <h1>DEAL ON THE TABLE</h1>
+    </div>
+
+    <div class="trade-stage">
+      <article class="party offerer">
+        <div class="role">Offer made by</div>
+        <div class="avatar">AK</div>
+        <div class="name">Aarav</div>
+        <div class="wallet">Balance <strong>$1,240</strong></div>
+      </article>
+
+      <article class="deal" aria-label="Offer details">
+        <div class="bundle">
+          <div class="icon" aria-hidden="true">🏙️</div>
+          <div class="bundle-copy">
+            <div class="bundle-label">Aarav gives</div>
+            <div class="bundle-title">Park Avenue</div>
+            <div class="bundle-meta">Purple set · 2 houses</div>
+          </div>
+        </div>
+        <div class="swap"><span class="swap-badge">⇄</span></div>
+        <div class="bundle reverse">
+          <div class="bundle-copy">
+            <div class="bundle-label">Riya gives</div>
+            <div class="bundle-title">$420 + Metro</div>
+            <div class="bundle-meta">Cash · Central Station</div>
+          </div>
+          <div class="icon" aria-hidden="true">🚇</div>
+        </div>
+      </article>
+
+      <article class="party receiver">
+        <div class="role">Waiting on</div>
+        <div class="avatar">RM</div>
+        <div class="name">Riya</div>
+        <div class="wallet">Balance <strong>$880</strong></div>
+      </article>
+    </div>
+  </section>
+
+  <div class="stamp">Needs your call, Riya</div>
+  <footer class="footer">
+    <div class="phone-note"><span class="phone" aria-hidden="true"></span><span>Riya, answer on your phone</span></div>
+    <div class="timer"><span class="timer-label">Offer expires in</span><div class="time" id="timer">00:28</div></div>
+    <div class="status"><span class="pulse"></span>Waiting for response</div>
+  </footer>
+</main>
+<script>
+let seconds=28; const el=document.getElementById('timer');
+setInterval(()=>{if(seconds>0)seconds--;el.textContent=`00:${String(seconds).padStart(2,'0')}`},1000);
+</script>
+</body>
+</html>

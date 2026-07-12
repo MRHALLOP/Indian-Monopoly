@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <!-- Faucet pipe from wall -->
+  <path d="M10,45 L30,45 L30,55 L10,55 Z" fill="#e2e8f0" stroke="#000000" stroke-width="4" stroke-linejoin="round"/>
+  
+  <!-- Main faucet body -->
+  <path d="M30,35 L55,35 C65,35 70,40 70,50 L70,65 L60,65 L60,50 C60,47 58,45 55,45 L30,45 Z" fill="#ffffff" stroke="#000000" stroke-width="4" stroke-linejoin="round"/>
+  
+  <!-- Knob / Valve stem -->
+  <path d="M40,35 L40,25 L45,25 L45,35 Z" fill="#e2e8f0" stroke="#000000" stroke-width="4" stroke-linejoin="round"/>
+  
+  <!-- Knob / Handle -->
+  <path d="M30,20 L55,20 L55,25 L30,25 Z" fill="#000000" rx="2"/>
+  <circle cx="42.5" cy="22.5" r="4" fill="#ffffff" stroke="#000000" stroke-width="2"/>
+  
+  <!-- Spout lip -->
+  <path d="M58,65 L72,65 L72,70 L58,70 Z" fill="#e2e8f0" stroke="#000000" stroke-width="4" stroke-linejoin="round"/>
+  
+  <!-- Dripping water droplet -->
+  <path d="M65,78 C65,81 63,83 60,83 C57,83 55,81 55,78 C55,74 60,70 60,70 C60,70 65,74 65,78 Z" fill="#3182ce" stroke="#000000" stroke-width="3" stroke-linejoin="round"/>
+</svg>

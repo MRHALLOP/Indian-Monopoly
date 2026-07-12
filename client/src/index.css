@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/* ── Stitch Design System ── */
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  overscroll-behavior: none;
+  background-color: #fcf9f8;
+  color: #1b1c1c;
+  -webkit-font-smoothing: antialiased;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+  position: fixed;
+  width: 100%;
+}
+
+/* Material Symbols */
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Stitch tactile button press effect */
+.btn-press:active {
+  transform: translateY(4px);
+  box-shadow: none !important;
+}
+
+/* Ambient shadow helpers */
+.shadow-ambient {
+  box-shadow: 0 4px 20px rgba(158, 33, 109, 0.08);
+}
+.shadow-ambient-md {
+  box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+}
+
+/* No scrollbar utility */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Backdrop blur for modals */
+.modal-backdrop {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Stitch color tokens as CSS vars */
+:root {
+  --primary: #9e216d;
+  --primary-container: #bd3d87;
+  --on-primary: #ffffff;
+  --on-primary-container: #fff0f4;
+  --secondary: #52625a;
+  --secondary-container: #d3e4da;
+  --on-secondary: #ffffff;
+  --on-secondary-container: #57665f;
+  --tertiary: #794e00;
+  --tertiary-container: #996400;
+  --tertiary-fixed: #ffddb4;
+  --on-tertiary-fixed: #291800;
+  --error: #ba1a1a;
+  --error-container: #ffdad6;
+  --surface: #fcf9f8;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f6f3f2;
+  --surface-container: #f0eded;
+  --surface-container-high: #eae7e7;
+  --surface-container-highest: #e5e2e1;
+  --on-surface: #1b1c1c;
+  --on-surface-variant: #55414a;
+  --outline: #88717a;
+  --outline-variant: #dbbfc9;
+  --inverse-surface: #303030;
+}
+
+/* ── Motion System — GPU-accelerated (transform & opacity only) ── */
+
+/* Required by PropertyViewer's animate-[slideDown_0.2s_ease-out] and drawers */
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  0%   { opacity: 0; transform: scale(0.85) translateY(10px); }
+  60%  { transform: scale(1.03) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes cardFlipIn {
+  from { opacity: 0; transform: perspective(800px) rotateY(-70deg); }
+  to   { opacity: 1; transform: perspective(800px) rotateY(0deg); }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(158, 33, 109, 0); }
+  50%      { box-shadow: 0 0 18px rgba(158, 33, 109, 0.35); }
+}
+
+@keyframes diceShake {
+  0%, 100% { transform: translate(0, 0) rotate(0deg); }
+  20% { transform: translate(-2px, -3px) rotate(-8deg); }
+  40% { transform: translate(3px, 1px) rotate(6deg); }
+  60% { transform: translate(-3px, 2px) rotate(-5deg); }
+  80% { transform: translate(2px, -2px) rotate(7deg); }
+}
+
+.animate-slide-down { animation: slideDown 0.2s ease-out both; }
+.pop-in            { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both; will-change: transform, opacity; }
+.card-flip-in      { animation: cardFlipIn 0.45s ease-out both; transform-style: preserve-3d; will-change: transform; backface-visibility: hidden; }
+.glow-pulse        { animation: glowPulse 1.8s ease-in-out infinite; }
+.dice-shake        { animation: diceShake 0.5s ease-in-out infinite; will-change: transform; }
+
+/* Tap-to-toggle chip micro-interaction (trade builder, selectors) */
+.chip-toggle {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+  will-change: transform;
+}
+.chip-toggle:active { transform: scale(0.95); }
