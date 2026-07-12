@@ -681,7 +681,6 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   }, []);
   
   useEffect(() => {
-    window.__socket = socket;
     socket.emit("create_room", room);
     socket.on("game_update", setGameState);
     

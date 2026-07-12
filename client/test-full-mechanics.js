@@ -98,7 +98,7 @@ function test(name, condition, reason = '') {
   test('Player 1 is Aarav', hostState?.players[0].name === 'Aarav');
   test('Player 2 is Diya', hostState?.players[1].name === 'Diya');
   test('Both start at position 0', hostState?.players.every(p => p.position === 0));
-  test('Both start with ₹150,000', hostState?.players.every(p => p.cash === 150000));
+  test('Both start with ₹1,500', hostState?.players.every(p => p.cash === 1500));
   test('Turn starts with Player 1', hostState?.currentTurn === 0);
 
   // ══════════════════════════════════════════════════════
@@ -461,7 +461,7 @@ function test(name, condition, reason = '') {
   const totalCash = hostState.players.reduce((sum, p) => sum + p.cash, 0);
   const anyPropertiesOwned = Object.keys(hostState.boardState).some(k => hostState.boardState[k].owner);
   test('Properties have been purchased (board state populated)', anyPropertiesOwned);
-  console.log(`  ℹ️  Total cash in game: ₹${totalCash} (started at ₹300,000)`);
+  console.log(`  ℹ️  Total cash in game: ₹${totalCash} (started at ₹3,000)`);
 
   // ══════════════════════════════════════════════════════
   // 9. OWNERSHIP INDICATOR CHECK

@@ -53,8 +53,10 @@ async function promiseWithTimeout(promise, ms, name) {
   });
 
   const hostPage = await browser.newPage();
-  const player1Page = await browser.newPage();
-  const player2Page = await browser.newPage();
+  const context1 = await browser.createBrowserContext();
+  const player1Page = await context1.newPage();
+  const context2 = await browser.createBrowserContext();
+  const player2Page = await context2.newPage();
 
   // Console event logging for debugging
   hostPage.on('console', msg => {
@@ -111,6 +113,25 @@ async function promiseWithTimeout(promise, ms, name) {
 
     // 2. Player 1 joins
     console.log('👤 Player 1: Navigating to client view...');
+    await player1Page.evaluateOnNewDocument(() => {
+      const originalWebSocket = window.WebSocket;
+      window.WebSocket = class extends originalWebSocket {
+        constructor(...args) {
+          super(...args);
+          this.addEventListener('message', (event) => {
+            try {
+              const data = event.data;
+              if (typeof data === 'string' && data.startsWith('42[')) {
+                const parsed = JSON.parse(data.substring(2));
+                if (parsed[0] === 'game_update') {
+                  window.__gameState = parsed[1];
+                }
+              }
+            } catch (e) {}
+          });
+        }
+      };
+    });
     await player1Page.goto(`${BASE_URL}/?mode=client&room=${randomRoomId}`, { waitUntil: 'domcontentloaded' });
     console.log('👤 Player 1: Waiting for join screen...');
     await player1Page.waitForSelector('input[placeholder="e.g. Arjun, Priya..."]', { timeout: 15000 });
@@ -127,6 +148,25 @@ async function promiseWithTimeout(promise, ms, name) {
 
     // 3. Player 2 joins
     console.log('👤 Player 2: Navigating to client view...');
+    await player2Page.evaluateOnNewDocument(() => {
+      const originalWebSocket = window.WebSocket;
+      window.WebSocket = class extends originalWebSocket {
+        constructor(...args) {
+          super(...args);
+          this.addEventListener('message', (event) => {
+            try {
+              const data = event.data;
+              if (typeof data === 'string' && data.startsWith('42[')) {
+                const parsed = JSON.parse(data.substring(2));
+                if (parsed[0] === 'game_update') {
+                  window.__gameState = parsed[1];
+                }
+              }
+            } catch (e) {}
+          });
+        }
+      };
+    });
     await player2Page.goto(`${BASE_URL}/?mode=client&room=${randomRoomId}`, { waitUntil: 'domcontentloaded' });
     console.log('👤 Player 2: Waiting for join screen...');
     await player2Page.waitForSelector('input[placeholder="e.g. Arjun, Priya..."]', { timeout: 15000 });

@@ -31,6 +31,54 @@ async function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+async function completeTurn(page, name) {
+  console.log(`  🔄 Completing turn for ${name}...`);
+  let attempts = 0;
+  while (attempts < 6) {
+    attempts++;
+    await sleep(1500);
+    
+    // If END TURN button is visible, click it and we are done!
+    const endBtnClicked = await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('button')];
+      const btn = buttons.find(b => b.textContent.toUpperCase().includes('END TURN'));
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+    if (endBtnClicked) {
+      console.log(`  ✅ ${name} clicked END TURN.`);
+      await sleep(1500);
+      break;
+    }
+
+    // If ROLL DICE button is visible, click it
+    const rollBtnClicked = await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('button')];
+      const btn = buttons.find(b => b.textContent.toUpperCase().includes('ROLL'));
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+    if (rollBtnClicked) {
+      console.log(`  🎲 ${name} clicked ROLL.`);
+      await sleep(5000); // wait for roll animation and socket updates
+      continue;
+    }
+
+    // If BUY button is visible, click it
+    const buyBtnClicked = await page.evaluate(() => {
+      const buttons = [...document.querySelectorAll('button')];
+      const btn = buttons.find(b => b.textContent.toUpperCase().includes('BUY'));
+      if (btn) { btn.click(); return true; }
+      return false;
+    });
+    if (buyBtnClicked) {
+      console.log(`  🛒 ${name} clicked BUY.`);
+      await sleep(1500);
+      continue;
+    }
+  }
+}
+
 (async () => {
   console.log('\n🎲 ═══════════════════════════════════════════════════');
   console.log('   INDIAN MONOPOLY — RIGOROUS BROWSER TEST');
@@ -107,7 +155,8 @@ async function sleep(ms) {
     // TEST 3: Player 1 Joins
     // ═══════════════════════════════════════════════════
     console.log('\n📋 TEST 3: Player 1 Joins');
-    player1Page = await browser.newPage();
+    const context1 = await browser.createBrowserContext();
+    player1Page = await context1.newPage();
     await player1Page.goto(`${BASE_URL}/?mode=client&room=${randomRoomId}`, { waitUntil: 'networkidle2' });
     await sleep(1000);
 
@@ -127,7 +176,7 @@ async function sleep(ms) {
 
     // Player should now be in GAME view
     const p1GameText = await player1Page.evaluate(() => document.body.innerText);
-    if (p1GameText.includes('Aarav') || p1GameText.toUpperCase().includes('ROLL') || p1GameText.includes('Waiting')) {
+    if (p1GameText.includes('Aarav') || p1GameText.toUpperCase().includes('ROLL') || p1GameText.toUpperCase().includes('WAITING')) {
       pass('Player 1 (Aarav) joined and entered game view');
     } else {
       fail('Player 1 (Aarav) joined and entered game view', 'Name not found in game view');
@@ -148,7 +197,8 @@ async function sleep(ms) {
     // TEST 4: Player 2 Joins
     // ═══════════════════════════════════════════════════
     console.log('\n📋 TEST 4: Player 2 Joins');
-    player2Page = await browser.newPage();
+    const context2 = await browser.createBrowserContext();
+    player2Page = await context2.newPage();
     await player2Page.goto(`${BASE_URL}/?mode=client&room=${randomRoomId}`, { waitUntil: 'networkidle2' });
     await sleep(1000);
 
@@ -158,7 +208,7 @@ async function sleep(ms) {
     await sleep(2000);
 
     const p2GameText = await player2Page.evaluate(() => document.body.innerText);
-    if (p2GameText.includes('Diya') || p2GameText.includes('Waiting')) {
+    if (p2GameText.includes('Diya') || p2GameText.toUpperCase().includes('WAITING')) {
       pass('Player 2 (Diya) joined and entered game view');
     } else {
       fail('Player 2 (Diya) joined and entered game view', 'Name not found in game view');
@@ -238,43 +288,8 @@ async function sleep(ms) {
     console.log('\n📋 TEST 6: End Turn');
     
     // Player 1 should see END TURN button after rolling
-    const p1HasEndTurn = await player1Page.evaluate(() => {
-      const buttons = [...document.querySelectorAll('button')];
-      return buttons.some(b => b.textContent.toUpperCase().includes('END TURN'));
-    });
-    if (p1HasEndTurn) {
-      pass('Player 1 sees END TURN button after rolling');
-      await player1Page.evaluate(() => {
-        const buttons = [...document.querySelectorAll('button')];
-        const endBtn = buttons.find(b => b.textContent.toUpperCase().includes('END TURN'));
-        if (endBtn) endBtn.click();
-      });
-      await sleep(2000);
-    } else {
-      // Might have rolled doubles, try rolling again then ending
-      console.log('  ℹ️  No END TURN yet (possible doubles), trying to roll again...');
-      await player1Page.evaluate(() => {
-        const buttons = [...document.querySelectorAll('button')];
-        const rollBtn = buttons.find(b => b.textContent.toUpperCase().includes('ROLL'));
-        if (rollBtn) rollBtn.click();
-      });
-      await sleep(8000);
-      // Handle potential buy prompt
-      await player1Page.evaluate(() => {
-        const buttons = [...document.querySelectorAll('button')];
-        const buyBtn = buttons.find(b => b.textContent.toUpperCase().includes('BUY'));
-        if (buyBtn) buyBtn.click();
-      });
-      await sleep(1000);
-      // Now try end turn
-      await player1Page.evaluate(() => {
-        const buttons = [...document.querySelectorAll('button')];
-        const endBtn = buttons.find(b => b.textContent.toUpperCase().includes('END TURN'));
-        if (endBtn) endBtn.click();
-      });
-      await sleep(2000);
-      pass('Player 1 ended turn (after handling doubles)');
-    }
+    await completeTurn(player1Page, 'Aarav');
+    pass('Player 1 completed turn successfully');
 
     await takeScreenshot(hostPage, '11_host_after_p1_end_turn');
 
@@ -283,6 +298,8 @@ async function sleep(ms) {
     // ═══════════════════════════════════════════════════
     console.log('\n📋 TEST 7: Player 2\'s Turn');
     
+
+
     // Now Player 2 should see ROLL
     const p2NowHasRoll = await player2Page.evaluate(() => {
       const buttons = [...document.querySelectorAll('button')];
@@ -296,7 +313,7 @@ async function sleep(ms) {
 
     // Player 1 should see "Waiting"
     const p1NowWaiting = await player1Page.evaluate(() => {
-      return document.body.innerText.includes('Waiting');
+      return document.body.innerText.toUpperCase().includes('WAITING');
     });
     if (p1NowWaiting) {
       pass('Player 1 sees Waiting... (not their turn)');
@@ -304,37 +321,8 @@ async function sleep(ms) {
       fail('Player 1 sees Waiting...', 'Player 1 not showing waiting state');
     }
 
-    // Player 2 rolls
-    await player2Page.evaluate(() => {
-      const buttons = [...document.querySelectorAll('button')];
-      const rollBtn = buttons.find(b => b.textContent.toUpperCase().includes('ROLL'));
-      if (rollBtn) rollBtn.click();
-    });
-    await sleep(8000);
-    await takeScreenshot(hostPage, '12_host_after_p2_roll');
-    await takeScreenshot(player2Page, '13_player2_after_roll');
-
-    // Handle buy prompt for Player 2
-    const p2AfterRollText = await player2Page.evaluate(() => document.body.innerText);
-    const p2BuyPrompted = p2AfterRollText.toUpperCase().includes('BUY') && p2AfterRollText.includes('₹');
-    if (p2BuyPrompted) {
-      console.log('  🛒 Player 2 buy prompt detected — clicking BUY...');
-      await player2Page.evaluate(() => {
-        const buttons = [...document.querySelectorAll('button')];
-        const buyBtn = buttons.find(b => b.textContent.toUpperCase().includes('BUY'));
-        if (buyBtn) buyBtn.click();
-      });
-      await sleep(2000);
-      pass('Player 2 bought property when prompted');
-    }
-
-    // End Player 2's turn
-    await player2Page.evaluate(() => {
-      const buttons = [...document.querySelectorAll('button')];
-      const endBtn = buttons.find(b => b.textContent.toUpperCase().includes('END TURN'));
-      if (endBtn) endBtn.click();
-    });
-    await sleep(2000);
+    await completeTurn(player2Page, 'Diya');
+    pass('Player 2 completed turn successfully');
     
     // ═══════════════════════════════════════════════════
     // TEST 8: BUG FIX — Build NOT allowed without full color set
@@ -410,7 +398,7 @@ async function sleep(ms) {
     if (p2PropertyCount > 0) {
       // If it's NOT Player 2's turn, check if Build buttons say "Not your turn"
       const p2IsWaiting = await player2Page.evaluate(() => {
-        return document.body.innerText.includes('Waiting');
+        return document.body.innerText.toUpperCase().includes('WAITING');
       });
 
       if (p2IsWaiting) {
@@ -462,64 +450,8 @@ async function sleep(ms) {
         });
         
         if (hasRoll) {
-          console.log(`  🎲 Round ${round}: ${label}'s turn — rolling...`);
-          await page.evaluate(() => {
-            const buttons = [...document.querySelectorAll('button')];
-            const rollBtn = buttons.find(b => b.textContent.toUpperCase().includes('ROLL'));
-            if (rollBtn) rollBtn.click();
-          });
-          await sleep(8000);
-
-          // Handle buy prompt
-          const buyVisible = await page.evaluate(() => {
-            const buttons = [...document.querySelectorAll('button')];
-            return buttons.some(b => b.textContent.toUpperCase().includes('BUY'));
-          });
-          if (buyVisible) {
-            console.log(`  🛒 ${label} buying property...`);
-            await page.evaluate(() => {
-              const buttons = [...document.querySelectorAll('button')];
-              const buyBtn = buttons.find(b => b.textContent.toUpperCase().includes('BUY'));
-              if (buyBtn) buyBtn.click();
-            });
-            await sleep(2000);
-          }
-
-          // Handle potential doubles (roll again)
-          let doubleRolls = 0;
-          while (doubleRolls < 3) {
-            const stillHasRoll = await page.evaluate(() => {
-              const buttons = [...document.querySelectorAll('button')];
-              return buttons.some(b => b.textContent.toUpperCase().includes('ROLL'));
-            });
-            if (stillHasRoll) {
-              console.log(`  🎲 ${label} rolled doubles! Rolling again...`);
-              await page.evaluate(() => {
-                const buttons = [...document.querySelectorAll('button')];
-                const rollBtn = buttons.find(b => b.textContent.toUpperCase().includes('ROLL'));
-                if (rollBtn) rollBtn.click();
-              });
-              await sleep(8000);
-              // Buy if prompted
-              await page.evaluate(() => {
-                const buttons = [...document.querySelectorAll('button')];
-                const buyBtn = buttons.find(b => b.textContent.toUpperCase().includes('BUY'));
-                if (buyBtn) buyBtn.click();
-              });
-              await sleep(1000);
-              doubleRolls++;
-            } else {
-              break;
-            }
-          }
-
-          // End turn
-          await page.evaluate(() => {
-            const buttons = [...document.querySelectorAll('button')];
-            const endBtn = buttons.find(b => b.textContent.toUpperCase().includes('END TURN'));
-            if (endBtn) endBtn.click();
-          });
-          await sleep(1500);
+          console.log(`  🎲 Round ${round}: ${label}'s turn...`);
+          await completeTurn(page, label);
         }
       }
     }

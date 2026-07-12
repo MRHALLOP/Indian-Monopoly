@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
 
-const ARTIFACT_DIR = 'C:/Users/choud/.gemini/antigravity/brain/fc110680-20a9-489a-bb98-4a9ab3135942';
+const ARTIFACT_DIR = 'C:/Users/choud/.gemini/antigravity/brain/10f230fc-1250-4a4b-81d7-237a9e9bc7a1';
 
 async function main() {
   const browser = await puppeteer.launch({

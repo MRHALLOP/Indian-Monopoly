@@ -100,16 +100,7 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
     };
   }, [socket]);
 
-  // ── Test hook for Puppeteer visual verification ─────────────────────────────
-  useEffect(() => {
-    window.__testTriggerVisual = (data) => {
-      if (['BUY', 'RENT', 'BUILD', 'CARD_DRAW', 'BANKRUPT', 'GAME_OVER'].includes(data.type)) {
-        setActiveEvent(data);
-        setTimeout(() => setActiveEvent(null), 5000);
-      }
-    };
-    return () => { delete window.__testTriggerVisual; };
-  }, [setActiveEvent]);
+
 
   return (
     <AnimatePresence>

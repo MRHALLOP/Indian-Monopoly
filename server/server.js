@@ -49,7 +49,21 @@ process.on('unhandledRejection', (reason) => {
 const app = express();
 app.use(cors());
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const isLocal = origin.startsWith('http://localhost:') || 
+                      origin.startsWith('http://127.0.0.1:') ||
+                      /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(origin);
+      if (isLocal) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS blocked'));
+      }
+    }
+  }
+});
 
 const rooms = {};
 
@@ -101,7 +115,6 @@ function logEvent(game, message) {
 }
 
 const saveTimers = {};
-const tradeTimers = {};
 
 function broadcastUpdate(room, game) {
   io.to(room).emit('game_update', game);
@@ -737,17 +750,6 @@ io.on('connection', (socket) => {
     if (checked.error) { io.to(socket.id).emit('action_error', checked.error); return; }
     const offer = { initiatorId: initiator.id, initiatorName: initiator.name, offerCash: checked.oCash, requestCash: checked.rCash, offerPropertyIds: checked.oProps, requestPropertyIds: checked.rProps, offerJailCards: checked.oJail, requestJailCards: checked.rJail };
     logEvent(game, `> ${initiator.name} offered a trade to ${target.name}.`);
-    
-    if (tradeTimers[room]) clearTimeout(tradeTimers[room]);
-    tradeTimers[room] = setTimeout(() => {
-      const g = rooms[room];
-      if (g) {
-        logEvent(g, `> The trade offer from ${initiator.name} to ${target.name} has timed out.`);
-        io.to(room).emit('trigger_visual', { type: 'TRADE_DECLINED', initiatorName: initiator.name, targetName: target.name });
-      }
-      delete tradeTimers[room];
-    }, 30000);
-
     io.to(targetId).emit('trade_offer', offer);
     io.to(room).emit('trigger_visual', { type: 'TRADE_OFFER', targetName: target.name, ...offer });
   });
@@ -756,12 +758,6 @@ io.on('connection', (socket) => {
     const { room, initiatorId } = payload || {};
     const game = rooms[room];
     if (!game) return;
-
-    if (tradeTimers[room]) {
-      clearTimeout(tradeTimers[room]);
-      delete tradeTimers[room];
-    }
-
     const target = game.players.find(p => p.id === socket.id);
     const initiator = game.players.find(p => p.id === initiatorId);
     if (!initiator || !target) return;
@@ -788,12 +784,6 @@ io.on('connection', (socket) => {
   socket.on('decline_trade', ({ room, initiatorId }) => {
     const game = rooms[room];
     if (!game) return;
-
-    if (tradeTimers[room]) {
-      clearTimeout(tradeTimers[room]);
-      delete tradeTimers[room];
-    }
-
     const target = game.players.find(p => p.id === socket.id);
     const initiator = game.players.find(p => p.id === initiatorId);
     logEvent(game, `> ${target ? target.name : 'Player'} declined the trade.`);
