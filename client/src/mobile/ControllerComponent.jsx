@@ -97,14 +97,6 @@ function ModeSelectScreen({ onStartNew, onJoin }) {
         style={{ background: '#fff', border: '2px solid #eae7e7', color: '#1b1c1c', fontFamily: 'Montserrat', boxShadow: '0 4px 0 0 #dbbfc9' }}>
         <Icon name="group_add" size={22} className="text-[#52625a]" /> Join a Game
       </button>
-      <button onClick={() => { setSubtitle('Join Previous Game'); setStep('join'); }}
-        className="w-full py-4 rounded-2xl font-bold uppercase tracking-widest btn-press flex items-center justify-center gap-2"
-        style={{ background: 'transparent', border: '2px dashed #dbbfc9', color: '#55414a', fontFamily: 'Montserrat' }}>
-        <Icon name="history" size={20} className="text-[#88717a]" /> Join Previous Game
-      </button>
-      <p className="text-center text-xs mt-2" style={{ color: '#88717a', fontFamily: 'Plus Jakarta Sans' }}>
-        "Previous" lets you rejoin an in-progress game and pick your old player from the reclaim list.
-      </p>
     </div>
   );
 }
@@ -522,45 +514,6 @@ function LobbyScreen({ socket, room = 'ABCD', gameState }) {
           </div>
         </div>
 
-        {/* Reclaim Disconnected Player */}
-        {(() => {
-          const disconnectedPlayers = gameState?.players?.filter(p => !p.connected && !p.bankrupt) || [];
-          if (disconnectedPlayers.length === 0) return null;
-          return (
-            <div className="w-full mt-6 shrink-0 bg-white p-4 rounded-2xl border border-zinc-200 shadow-sm mb-4">
-              <p className="text-[10px] font-extrabold uppercase tracking-widest text-[#9e216d] mb-3 font-sans flex items-center gap-1.5">
-                <Icon name="device_reset" size={14} className="text-[#9e216d]" />
-                Reclaim Disconnected Player
-              </p>
-              <div className="flex flex-col gap-2">
-                {disconnectedPlayers.map(p => (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      const clientId = getOrCreateClientId();
-                      localStorage.setItem(`monopoly_name_${room}`, p.name);
-                      localStorage.setItem(`monopoly_color_${room}`, p.color);
-                      socket.emit('join_game', { room, name: p.name, color: p.color, clientId });
-                    }}
-                    className="w-full py-3 px-4 rounded-xl flex items-center justify-between border border-dashed border-[#dbbfc9] bg-zinc-50 hover:bg-[#ffeff6] transition-all text-left"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center bg-white border">
-                        <TokenIcon color={p.color} size={14} />
-                      </div>
-                      <span className="font-bold text-sm text-[#1b1c1c]" style={{ fontFamily: 'Plus Jakarta Sans' }}>
-                        {p.name}
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-extrabold uppercase text-[#9e216d] flex items-center gap-0.5">
-                      Rejoin <Icon name="chevron_right" size={12} />
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
       </div>
 
       {/* Connect button */}
@@ -722,16 +675,21 @@ export default function ControllerComponent({ socket }) {
     }
   }, [gameState?.gameStatus]);
 
-  // Auto-reconnect player if name and color exist in local storage for this room
+  const lastAttemptedSocketRef = useRef(null);
+
+  // Auto-reconnect player if name and color exist in local storage for this room, once per socket connection
   useEffect(() => {
-    if (socket && room && gameState && view === 'LOBBY') {
-      const savedName = localStorage.getItem(`monopoly_name_${room}`);
-      const savedColor = localStorage.getItem(`monopoly_color_${room}`);
-      if (savedName && savedColor) {
-        const isAlreadyActive = gameState.players.some(p => p.name === savedName && p.connected && p.id === socket.id);
-        if (!isAlreadyActive) {
-          const clientId = getOrCreateClientId();
-          socket.emit('join_game', { room, name: savedName, color: savedColor, clientId });
+    if (socket && socket.id && room && gameState && view === 'LOBBY') {
+      if (lastAttemptedSocketRef.current !== socket.id) {
+        const savedName = localStorage.getItem(`monopoly_name_${room}`);
+        const savedColor = localStorage.getItem(`monopoly_color_${room}`);
+        if (savedName && savedColor) {
+          const isAlreadyActive = gameState.players.some(p => p.name === savedName && p.connected && p.id === socket.id);
+          if (!isAlreadyActive) {
+            lastAttemptedSocketRef.current = socket.id;
+            const clientId = getOrCreateClientId();
+            socket.emit('join_game', { room, name: savedName, color: savedColor, clientId });
+          }
         }
       }
     }

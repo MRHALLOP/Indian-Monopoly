@@ -1041,6 +1041,19 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     }
   }, [gameState?.startingRolls]);
 
+  if (hostErrorMsg) {
+    return (
+      <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center overflow-hidden text-white relative font-sans">
+        <div className="flex flex-col items-center gap-6 max-w-lg text-center px-8 z-[9999]">
+          <div className="text-6xl">⚠️</div>
+          <h1 className="text-3xl font-bold text-red-400">Host Access Denied</h1>
+          <p className="text-zinc-300 text-lg">{hostErrorMsg}</p>
+          <p className="text-zinc-500 text-sm">If you are the correct host, check if another browser tab or window is already open with this room code. Do not clear your browser storage, as it contains your room access key.</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!gameState) return <div className="text-white text-4xl flex h-screen items-center justify-center bg-zinc-950 font-bold tracking-widest animate-pulse">INITIALIZING LOBBY...</div>;
 
   if (gameState.gameStatus === 'lobby') {
@@ -1180,7 +1193,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
             <div className="text-6xl">⚠️</div>
             <h1 className="text-3xl font-bold text-red-400">Host Access Denied</h1>
             <p className="text-zinc-300 text-lg">{hostErrorMsg}</p>
-            <p className="text-zinc-500 text-sm">If you are the correct host, clear your browser storage and reload.</p>
+            <p className="text-zinc-500 text-sm">If you are the correct host, check if another browser tab or window is already open with this room code. Do not clear your browser storage, as it contains your room access key.</p>
           </div>
         </div>
       )}
