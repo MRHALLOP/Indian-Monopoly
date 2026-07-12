@@ -274,7 +274,7 @@ function PropertyCardPopup({ landedTile }) {
               <div className="w-[24vh] h-[38vh] bg-white border-[2px] border-black p-[0.375rem] shadow-2xl">
                 {/* Inner border wrapper */}
                 <div className="h-full border-[1px] border-black flex flex-col overflow-hidden">
-                  
+
                   {/* Card Header — colored band */}
                   <div className="flex items-center justify-center py-[0.75rem] border-b border-black text-white font-black text-[1.25rem] uppercase tracking-wider"
                        style={{ backgroundColor: specialHeaderBg }}>
@@ -354,19 +354,19 @@ function PropertyCardPopup({ landedTile }) {
         {/* --- Right Side: Monopoly Man & Speech Bubble --- */}
         <div className="relative w-[24vh] h-[34vh] flex flex-col items-center justify-end pointer-events-none z-10 flex-shrink-0">
           {/* Monopoly Man Image */}
-          <img 
-            src="/monopoly_man.png" 
-            alt="Monopoly Man" 
-            className="relative z-30 w-full h-auto object-contain drop-shadow-2xl" 
+          <img
+            src="/monopoly_man.png"
+            alt="Monopoly Man"
+            className="relative z-30 w-full h-auto object-contain drop-shadow-2xl"
           />
-          
+
           {/* Speech Bubble — large, clean, white, no black border, pointer bottom-center */}
           <div className="absolute top-[-5vh] left-1/2 -translate-x-1/2 z-50 animate-bounce">
             <div className="relative bg-white border-[3px] border-gray-300 rounded-[1.5rem] px-[2vh] py-[1vh] shadow-2xl flex items-center justify-center min-w-[12vh] max-w-[22vh]">
               {/* Center Pointer */}
               <div className="absolute bottom-[-1.375rem] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[0.8rem] border-l-transparent border-t-[1.375rem] border-t-gray-300 border-r-[0.8rem] border-r-transparent"></div>
               <div className="absolute bottom-[-1.05rem] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[0.7rem] border-l-transparent border-t-[1.125rem] border-t-white border-r-[0.7rem] border-r-transparent z-10"></div>
-              
+
               {context === 'rent_due' ? (
                 <p className="text-[1.125rem] font-black text-zinc-950 text-center" style={{ fontFamily: 'Plus Jakarta Sans' }}>
                   {playerName} paid<br/><span className="text-[#9e216d]">₹{amount}</span> to {ownerName}
@@ -502,7 +502,7 @@ function BankruptcyResolveOverlay({ activeResolution, allPlayers }) {
 
 function AudioVisualizer({ analyser, isMuted }) {
   const canvasRef = useRef(null);
-  
+
   useEffect(() => {
     if (!analyser || isMuted) return;
     const canvas = canvasRef.current;
@@ -515,22 +515,22 @@ function AudioVisualizer({ analyser, isMuted }) {
     const renderFrame = () => {
       animationFrameId = requestAnimationFrame(renderFrame);
       analyser.getByteFrequencyData(dataArray);
-      
+
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      
+
       const barWidth = (canvas.width / bufferLength) * 1.5;
       let x = 0;
-      
+
       for (let i = 0; i < bufferLength; i++) {
         // scale height to look nice
         const percent = dataArray[i] / 255;
         const barHeight = percent * canvas.height * 0.9;
-        
+
         if (barHeight > 0) {
           const grad = ctx.createLinearGradient(0, canvas.height - barHeight, 0, canvas.height);
           grad.addColorStop(0, '#f472b6'); // pink-400
           grad.addColorStop(1, '#9e216d'); // RS 2000 Magenta
-          
+
           ctx.fillStyle = grad;
           ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
         }
@@ -545,11 +545,11 @@ function AudioVisualizer({ analyser, isMuted }) {
   }, [analyser, isMuted]);
 
   return (
-    <canvas 
-      ref={canvasRef} 
-      className="w-20 h-5 rounded bg-zinc-950/60 border border-zinc-800" 
-      width={80} 
-      height={20} 
+    <canvas
+      ref={canvasRef}
+      className="w-20 h-5 rounded bg-zinc-950/60 border border-zinc-800"
+      width={80}
+      height={20}
     />
   );
 }
@@ -572,7 +572,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   const [activeDice, setActiveDice] = useState(null);
   const [floaters, setFloaters] = useState([]);
   const [particles, setParticles] = useState([]);
-  
+
   const [prevPlayersState, setPrevPlayersState] = useState([]);
   const [prevCash, setPrevCash] = useState({});
 
@@ -585,29 +585,43 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   // so manage_property game_updates don't re-trigger the popup for the same landing.
   const dismissedLandedTileKeyRef = useRef(null);
   const [activeVisualEvent, setActiveVisualEvent] = useState(null);
-  
-  const [isAudioMuted, setIsAudioMuted] = useState(false);
+
+  const [isAudioMuted, setIsAudioMuted] = useState(true);
   const [bgmVolume, setBgmVolume] = useState(0.25);
   const [sfxVolume, setSfxVolume] = useState(0.4);
   const [audioAnalyser, setAudioAnalyser] = useState(null);
+  const suppressGenericCashSoundUntilRef = useRef(0);
 
-  // User gesture interaction listener to bypass browser autoplay blocks
+  const [audioState, setAudioState] = useState('prompt');
+  const [audioPromptText, setAudioPromptText] = useState('Enable TV sound for procedurally synthesized ambient music and sound effects.');
+
+  const handleUnlockAudio = async () => {
+    const success = await soundEngine.unlock();
+    if (success) {
+      localStorage.setItem('monopoly_host_audio_enabled', 'true');
+      setAudioState('enabled');
+      setIsAudioMuted(false);
+    } else {
+      setAudioState('unavailable');
+      setAudioPromptText('Sound unavailable in this browser.');
+    }
+  };
+
+  // Verify AudioContext lock status on mount
   useEffect(() => {
-    const handleGesture = () => {
-      try {
-        soundEngine.setMuted(false);
-      } catch (e) {
-        console.warn('Error starting sound engine on gesture:', e);
+    const checkAudio = async () => {
+      soundEngine.init();
+      const unlocked = soundEngine.isUnlocked();
+      const persisted = localStorage.getItem('monopoly_host_audio_enabled') === 'true';
+      if (unlocked && persisted) {
+        setAudioState('enabled');
+        setIsAudioMuted(false);
+      } else {
+        setAudioState('prompt');
+        setIsAudioMuted(true);
       }
-      window.removeEventListener('click', handleGesture);
-      window.removeEventListener('keydown', handleGesture);
     };
-    window.addEventListener('click', handleGesture);
-    window.addEventListener('keydown', handleGesture);
-    return () => {
-      window.removeEventListener('click', handleGesture);
-      window.removeEventListener('keydown', handleGesture);
-    };
+    checkAudio();
   }, []);
 
   // Sync state changes with the SoundEngine safely
@@ -643,7 +657,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   // Detect property mortgages or house sells/builds to play audio feedback
   useEffect(() => {
     if (!gameState || !gameState.boardState) return;
-    
+
     // Skip if we are initialising
     if (Object.keys(visualBoardState).length === 0) return;
 
@@ -681,21 +695,22 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       }
     };
   }, []);
-  
+
   useEffect(() => {
     socket.emit("create_room", room);
-    socket.on("game_update", setGameState);
-    
-    socket.on("auction_start", (data) => {
+
+    const onGameUpdate = (data) => setGameState(data);
+
+    const onAuctionStart = (data) => {
       setAuctionState(data);
       try {
         soundEngine.playAuctionStart();
       } catch (e) {
         console.error('Error playing auction start sound:', e);
       }
-    });
+    };
 
-    socket.on("auction_update", (data) => {
+    const onAuctionUpdate = (data) => {
       setAuctionState(prev => {
         if (data && (!prev || data.currentBid > prev.currentBid)) {
           try {
@@ -706,9 +721,9 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         }
         return data;
       });
-    });
+    };
 
-    socket.on("auction_end", (data) => {
+    const onAuctionEnd = (data) => {
       setAuctionState(prev => ({
         ...prev,
         status: 'ended',
@@ -721,12 +736,16 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       } catch (e) {
         console.error('Error playing auction end sound:', e);
       }
+      suppressGenericCashSoundUntilRef.current = Date.now() + 1500;
       // Auto-dismiss after 5 seconds
       setTimeout(() => setAuctionState(null), 5000);
-    });
-    
-    // Listen to dice rolls and queue visual events during movement
-    socket.on("trigger_visual", (data) => {
+    };
+
+    const onTriggerVisual = (data) => {
+      if (['RENT', 'BUY', 'CARD_DRAW', 'TRADE_ACCEPTED', 'TRADE_DECLINED', 'BANKRUPT', 'GAME_OVER', 'JAIL'].includes(data.type)) {
+        suppressGenericCashSoundUntilRef.current = Date.now() + 1500;
+      }
+
       if (data.type === 'DICE_ROLL') {
         lastRollSumRef.current = data.dice[0] + data.dice[1];
         setActiveDice(data.dice);
@@ -737,10 +756,8 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         } catch (e) {
           console.error('Error playing dice roll sound:', e);
         }
-      } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER'].includes(data.type)) {
-        // RENT and CARD_DRAW fire during the dice roll handler (before movement completes), so always queue them
-        // BUY fires after the player clicks Buy (post-landing), so use normal ref-based queueing
-        const alwaysQueue = ['RENT', 'CARD_DRAW'].includes(data.type);
+      } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER', 'JAIL'].includes(data.type)) {
+        const alwaysQueue = ['RENT', 'CARD_DRAW', 'JAIL'].includes(data.type);
         if (alwaysQueue || isAnimatingRef.current || willMoveRef.current) {
           pendingVisualEventRef.current = data;
         } else {
@@ -748,25 +765,31 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
           setTimeout(() => setActiveVisualEvent(null), 4000);
         }
       }
-    });
+    };
+
+    socket.on("game_update", onGameUpdate);
+    socket.on("auction_start", onAuctionStart);
+    socket.on("auction_update", onAuctionUpdate);
+    socket.on("auction_end", onAuctionEnd);
+    socket.on("trigger_visual", onTriggerVisual);
 
     return () => {
-      socket.off("game_update");
-      socket.off("auction_start");
-      socket.off("auction_update");
-      socket.off("auction_end");
-      socket.off("trigger_visual");
+      socket.off("game_update", onGameUpdate);
+      socket.off("auction_start", onAuctionStart);
+      socket.off("auction_update", onAuctionUpdate);
+      socket.off("auction_end", onAuctionEnd);
+      socket.off("trigger_visual", onTriggerVisual);
     };
-  }, [socket]);
+  }, [socket, room]);
 
   // Cash changes: floating text and flying coins
   useEffect(() => {
     if (visualPlayers.length === 0) return;
-    
+
     const decs = [];
     const incs = [];
     let hasCashChange = false;
-    
+
     visualPlayers.forEach(p => {
       const oldCash = prevCash[p.id];
       if (oldCash !== undefined && oldCash !== p.cash) {
@@ -774,7 +797,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         const diff = p.cash - oldCash;
         const text = diff > 0 ? `+₹${diff}` : `-₹${Math.abs(diff)}`;
         const color = diff > 0 ? 'text-green-500' : 'text-red-500';
-        
+
         // Push floater indicator
         const newFloater = {
           id: Math.random().toString(),
@@ -798,7 +821,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         incs.forEach(inc => {
           const fromIndex = visualPlayers.findIndex(pl => pl.id === dec.id);
           const toIndex = visualPlayers.findIndex(pl => pl.id === inc.id);
-          
+
           if (fromIndex !== -1 && toIndex !== -1) {
             const startTop = fromIndex * 96 + 40;
             const endTop = toIndex * 96 + 40;
@@ -818,7 +841,9 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
 
     if (hasCashChange) {
       try {
-        soundEngine.playCoinClink();
+        if (Date.now() >= suppressGenericCashSoundUntilRef.current) {
+          soundEngine.playCoinClink();
+        }
       } catch (e) {}
     }
 
@@ -865,7 +890,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       const prevPlayer = prevPlayersState.find(vp => vp.id === movingPlayer.id);
       const oldPos = prevPlayer.position;
       const finalPos = movingPlayer.position;
-      
+
       runSequencedMovement(movingPlayer.id, oldPos, finalPos, gameState);
     } else if (!isAnimatingRef.current) {
       if (willMoveRef.current) {
@@ -897,7 +922,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         return newTile;
       });
       setPrevPlayersState(gameState.players.map(p => ({ ...p })));
-      
+
       if (!activeVisualEvent || activeVisualEvent.type !== 'BUILD') {
         setVisualBoardState(gameState.boardState);
       }
@@ -956,7 +981,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     // 4. Update visual state
     setVisualPlayers(targetGameState.players.map(p => ({ ...p })));
     setPrevPlayersState(targetGameState.players.map(p => ({ ...p })));
-    
+
     // 5. Open property card popup and trigger visual event if queued
     if (pendingVisualEventRef.current) {
       setActiveVisualEvent(pendingVisualEventRef.current);
@@ -1008,7 +1033,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       <div className="h-screen w-screen bg-zinc-950 flex flex-col items-center justify-center text-white relative font-sans overflow-hidden">
         {/* Animated Background */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(158,33,109,0.15),transparent_70%)] pointer-events-none" />
-        
+
         {/* Lobby Container */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
@@ -1026,7 +1051,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
               <span className="text-3xl font-black tracking-wider text-yellow-400 uppercase font-mono">{room}</span>
             </div>
           </div>
-          
+
           {/* Players Grid */}
           <div className="grid grid-cols-2 gap-5 my-2">
             {gameState.players.map((p, idx) => (
@@ -1059,12 +1084,59 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
               </div>
             ))}
           </div>
-          
+
+          {/* Audio Activation Prompt */}
+          {audioState === 'prompt' && (
+            <div className="flex justify-between items-center bg-zinc-800/80 border border-zinc-700 px-6 py-4 rounded-2xl select-none font-sans">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-zinc-750 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-yellow-400 text-xl" style={{ fontSize: 20 }}>volume_up</span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-zinc-200">TV Sound is Disabled</h4>
+                  <p className="text-zinc-500 text-[10px] mt-0.5 font-medium">{audioPromptText}</p>
+                </div>
+              </div>
+              <button
+                onClick={handleUnlockAudio}
+                className="px-6 py-3 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-zinc-900 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer font-sans"
+              >
+                Enable TV sound
+              </button>
+            </div>
+          )}
+          {audioState === 'unavailable' && (
+            <div className="flex justify-between items-center bg-red-950/20 border border-red-900/50 px-6 py-4 rounded-2xl select-none font-sans">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-red-950/40 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-red-400 text-xl" style={{ fontSize: 20 }}>volume_off</span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-red-400">Sound Unavailable</h4>
+                  <p className="text-red-300/60 text-[10px] mt-0.5 font-medium">Sound unavailable in this browser.</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {audioState === 'enabled' && (
+            <div className="flex justify-between items-center bg-emerald-950/20 border border-emerald-900/50 px-6 py-4 rounded-2xl select-none font-sans">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-950/40 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-emerald-400 text-xl" style={{ fontSize: 20 }}>volume_up</span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-emerald-400">TV Sound is Enabled</h4>
+                  <p className="text-emerald-300/60 text-[10px] mt-0.5 font-medium">Synthesized spatial ambient audio and sound effects active.</p>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Status info (Start Game is controlled by Lobby Leader phone) */}
           <div className="flex justify-between items-center border-t border-zinc-800/80 pt-8 font-sans">
             <span className="text-sm text-zinc-400 font-medium">
-              {gameState.players.length < 2 
-                ? "At least 2 players are required to start" 
+              {gameState.players.length < 2
+                ? "At least 2 players are required to start"
                 : `${gameState.players.length} players connected`}
             </span>
             <span className="text-sm text-zinc-500 font-semibold italic">
@@ -1087,7 +1159,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       `}</style>
       <VisualEvents activeEvent={activeVisualEvent} setActiveEvent={setActiveVisualEvent} socket={socket} boardState={gameState.boardState} players={gameState.players} />
       <AuctionDisplay auctionState={auctionState} allPlayers={gameState.players} />
-      
+
       {/* Starting Rolls Overlay */}
       <AnimatePresence>
         {gameState && gameState.startingRolls && gameState.startingRolls.length > 0 && !dismissedStartingRolls && (
@@ -1106,7 +1178,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                 <span className="text-[10px] font-extrabold uppercase tracking-widest text-yellow-400 font-sans">Turn Order Selection</span>
                 <h2 className="text-3xl font-black tracking-wide uppercase mt-1 text-zinc-100 font-sans">Starting Rolls</h2>
               </div>
-              
+
               <div className="flex flex-col gap-4 max-h-[40vh] overflow-y-auto pr-2 no-scrollbar font-sans">
                 {gameState.startingRolls.map((roundInfo, idx) => (
                   <div key={idx} className="bg-zinc-950/40 border border-zinc-850 p-4 rounded-2xl flex flex-col gap-2">
@@ -1161,7 +1233,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
           <span className="text-2xl font-black tracking-wider text-zinc-900 uppercase font-sans">{room}</span>
         </div>
       </div>
-      
+
       {/* Property Card Popup Overlay (Interactive) */}
       <div className="absolute inset-0 pointer-events-none z-[100]">
         <AnimatePresence mode="wait">
@@ -1178,10 +1250,10 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
               />
            )}
            {gameState.bankruptcyResolveQueue && gameState.bankruptcyResolveQueue.length > 0 && (
-             <BankruptcyResolveOverlay 
-               key={`resolve-${gameState.bankruptcyResolveQueue[0].propertyId}`} 
-               activeResolution={gameState.bankruptcyResolveQueue[0]} 
-               allPlayers={gameState.players} 
+             <BankruptcyResolveOverlay
+               key={`resolve-${gameState.bankruptcyResolveQueue[0].propertyId}`}
+               activeResolution={gameState.bankruptcyResolveQueue[0]}
+               allPlayers={gameState.players}
              />
            )}
         </AnimatePresence>
@@ -1195,11 +1267,11 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
               const isCurrent = idx === gameState.currentTurn;
               const isBankrupt = p.bankrupt;
               return (
-                <div 
+                <div
                   key={p.id}
                   className={`relative flex items-center gap-[0.5rem] bg-white/95 backdrop-blur-sm h-[5rem] p-[0.5rem] rounded-[1rem] border-[3px] shadow-2xl transition-all ${
-                    isCurrent 
-                      ? 'border-yellow-400 scale-105 shadow-[0_0_20px_rgba(250,204,21,0.4)]' 
+                    isCurrent
+                      ? 'border-yellow-400 scale-105 shadow-[0_0_20px_rgba(250,204,21,0.4)]'
                       : 'border-zinc-300'
                   } ${isBankrupt ? 'opacity-40 grayscale' : ''} ${p.connected === false ? 'opacity-60 border-dashed border-zinc-300 bg-zinc-50' : ''}`}
                   style={{
@@ -1208,17 +1280,17 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                   }}
                 >
                   {/* Player Avatar */}
-                  <div 
-                    className="w-[2.25rem] h-[2.25rem] rounded-full border-2 border-white shadow-md flex items-center justify-center shrink-0" 
+                  <div
+                    className="w-[2.25rem] h-[2.25rem] rounded-full border-2 border-white shadow-md flex items-center justify-center shrink-0"
                     style={{ backgroundColor: p.color }}
                   >
                     <TokenIcon color="#fff" size={16} />
                   </div>
-                  
+
                   {/* Player Info */}
                   <div className="flex-1 min-w-0 flex flex-col justify-center">
                     <p className="font-black text-sm text-zinc-950 truncate uppercase tracking-tight leading-tight flex items-center gap-1.5">
-                      <span>{p.name}</span>
+                      <span title={p.name}>{p.name.length > 12 ? p.name.slice(0, 12) + '...' : p.name}</span>
                       {p.connected === false && (
                         <span className="text-[9px] font-extrabold text-red-500 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded normal-case tracking-normal shrink-0">Offline</span>
                       )}
@@ -1299,7 +1371,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       {/* --- Dice Roll Floating Animation Overlay --- */}
       <AnimatePresence>
         {activeDice && (
-          <motion.div 
+          <motion.div
             initial={{ scale: 0, rotate: -180, opacity: 0 }}
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             exit={{ scale: 0, opacity: 0 }}
@@ -1315,7 +1387,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         )}
       </AnimatePresence>
 
-      <div 
+      <div
         className="w-[95vh] h-[95vh] bg-[#fbf8ef] border-2 border-black shadow-2xl relative box-border"
         style={{
           display: 'grid',
@@ -1328,14 +1400,14 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
           const isCorner = city.id === 0 || city.id === 10 || city.id === 20 || city.id === 30;
           const isMortgaged = tileState.mortgaged;
           const ownerPlayer = tileState.owner ? visualPlayers.find(p => p.id === tileState.owner) : null;
-          
+
           const hexColor = getColorHex(city.color);
           const hasColorBar = hexColor !== 'transparent';
           const isTopRow = city.id > 20 && city.id < 30;
-          
+
           return (
-            <div 
-              key={city.id} 
+            <div
+              key={city.id}
               className="relative flex items-center justify-center bg-[#fbf8ef] box-border"
               style={{
                 ...getGridStyle(city.id),
@@ -1344,16 +1416,16 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
               {/* Border overlay - renders on top of tile content */}
               <div className="absolute inset-0 z-30 pointer-events-none" style={{ boxShadow: `inset 0 0 0 1px black${ownerPlayer ? `, inset 0 0 0 3px ${ownerPlayer.color}` : ''}` }} />
               {/* Inner container with strict aspect ratio rotation for non-corners */}
-              <div 
+              <div
                 className={
-                  isCorner || (city.id > 0 && city.id < 10) || (city.id > 20 && city.id < 30) 
-                    ? "w-full h-full flex flex-col justify-between absolute inset-0 box-border" 
+                  isCorner || (city.id > 0 && city.id < 10) || (city.id > 20 && city.id < 30)
+                    ? "w-full h-full flex flex-col justify-between absolute inset-0 box-border"
                     : "absolute top-1/2 left-1/2 flex flex-col justify-between box-border"
                 }
                 style={
-                  isCorner 
-                    ? {} 
-                    : (city.id > 0 && city.id < 10) 
+                  isCorner
+                    ? {}
+                    : (city.id > 0 && city.id < 10)
                       ? { transform: 'none' }
                       : (city.id > 20 && city.id < 30)
                         ? { transform: 'none' }
@@ -1374,7 +1446,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                   transition={{ duration: 0.6 }}
                 >
                   {/* Front Face: The actual tile content */}
-                  <div 
+                  <div
                     className="absolute inset-0 w-full h-full flex flex-col justify-between bg-[#fbf8ef]"
                     style={{ backfaceVisibility: isMortgaged ? 'hidden' : 'visible', ...(isTopRow ? { flexDirection: 'column-reverse' } : {}) }}
                   >
@@ -1388,10 +1460,10 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                                 key={`house-${city.id}-${i}`}
                                 initial={{ scale: 0, y: -40, opacity: 0 }}
                                 animate={{ scale: 1, y: 0, opacity: 1 }}
-                                transition={{ 
-                                  type: 'spring', 
-                                  stiffness: 400, 
-                                  damping: 12, 
+                                transition={{
+                                  type: 'spring',
+                                  stiffness: 400,
+                                  damping: 12,
                                   delay: i * 0.15,
                                   mass: 0.8
                                 }}
@@ -1421,9 +1493,9 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                               key={`hotel-${city.id}`}
                               initial={{ scale: 0, y: -50, rotateZ: -15, opacity: 0 }}
                               animate={{ scale: 1, y: 0, rotateZ: 0, opacity: 1 }}
-                              transition={{ 
-                                type: 'spring', 
-                                stiffness: 350, 
+                              transition={{
+                                type: 'spring',
+                                stiffness: 350,
                                 damping: 10,
                                 mass: 1
                               }}
@@ -1470,7 +1542,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                               {ownerPlayer.name}
                             </span>
                           )}
-                          
+
                           {/* Train Icon */}
                           {city.type === 'station' && (
                             <div className="flex-1 w-full flex items-center justify-center my-1" style={isTopRow ? { transform: 'rotate(180deg)' } : {}}>
@@ -1558,7 +1630,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                          <div className="absolute top-0 right-0 w-[70%] h-[70%] bg-[#f7941d] border-l-[2px] border-b-[2px] border-black flex flex-col items-center justify-center p-1">
                             <div className="transform rotate-45 flex flex-col items-center w-full h-full justify-center">
                                <span className="text-[0.7rem] font-black uppercase text-black leading-none mb-1">IN</span>
-                               
+
                                {/* Jail Bars */}
                                <div className="w-[85%] aspect-square bg-[#fbf8ef] border-[2px] border-black relative flex items-end justify-center overflow-hidden">
                                   {/* Character */}
@@ -1584,7 +1656,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                          <div className="absolute top-0 bottom-[30%] left-0 w-[30%] flex items-center justify-center">
                             <span className="text-[0.75rem] font-black uppercase text-black -rotate-90 tracking-widest whitespace-nowrap">JUST</span>
                          </div>
-                         
+
                          {/* VISITING (Bottom Edge) */}
                          <div className="absolute bottom-0 right-0 left-0 h-[30%] flex items-center justify-center">
                             <span className="text-[0.75rem] font-black uppercase text-black tracking-widest pl-[15%]">VISITING</span>
@@ -1629,9 +1701,9 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                   </div>
 
                    {/* Back Face: Mortgaged Overlay Stamp */}
-                  <div 
+                  <div
                     className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-zinc-200 border border-red-600 shadow-inner"
-                    style={{ 
+                    style={{
                       backfaceVisibility: 'hidden',
                       transform: 'rotateY(180deg)',
                     }}
@@ -1651,9 +1723,9 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
               {/* Dynamic Players Container */}
               <div className="absolute inset-0 flex items-center justify-center gap-1 z-20 pointer-events-none flex-wrap p-1">
                 {visualPlayers.map(p => p.position === city.id && (
-                  <motion.div 
+                  <motion.div
                     layoutId={`player-${p.id}`}
-                    key={p.id} 
+                    key={p.id}
                     className={`relative z-50 ${p.bankrupt ? 'hidden' : ''}`}
                   >
                     <TokenIcon color={p.color} size={28} />
@@ -1665,7 +1737,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         })}
 
         {/* CENTER BOARD ARTWORK */}
-        <div 
+        <div
           className="relative pointer-events-none z-0 border-[4px] border-black"
           style={{ gridRow: '2 / 11', gridColumn: '2 / 11' }}
         >

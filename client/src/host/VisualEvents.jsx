@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { CITIES } from '../constants';
@@ -27,31 +27,34 @@ function getColorHex(tileColor) {
   return 'transparent';
 }
 
-function getPropertyDetails(id) {
-  if (id === null || id === undefined) return null;
-  return CITIES.find(c => c.id === id);
-}
-
+// eslint-disable-next-line no-unused-vars
 export default function VisualEvents({ socket, activeEvent, setActiveEvent, boardState, players }) {
   const [activeTrade, setActiveTrade] = useState(null);
   const event = activeEvent;
 
+  const pendingTradeTimerRef = useRef(null);
+  const resultTradeTimerRef = useRef(null);
+
+  const clearTradeTimers = () => {
+    if (pendingTradeTimerRef.current) clearTimeout(pendingTradeTimerRef.current);
+    if (resultTradeTimerRef.current) clearTimeout(resultTradeTimerRef.current);
+    pendingTradeTimerRef.current = null;
+    resultTradeTimerRef.current = null;
+  };
+
   useEffect(() => {
     if (activeEvent) {
       try {
-        if (activeEvent.type === 'BUY') {
-          soundEngine.playPurchase();
-        } else if (activeEvent.type === 'RENT') {
-          soundEngine.playRent();
-        } else if (activeEvent.type === 'BUILD') {
-          soundEngine.playBuild();
-        } else if (activeEvent.type === 'CARD_DRAW') {
-          soundEngine.playCardDraw();
-        } else if (activeEvent.type === 'BANKRUPT') {
-          soundEngine.playJail();
-        } else if (activeEvent.type === 'GAME_OVER') {
-          soundEngine.playGameOver();
-        }
+        const soundByEvent = {
+          BUY: () => soundEngine.playPurchase(),
+          RENT: () => soundEngine.playRent(),
+          BUILD: () => soundEngine.playBuild(),
+          CARD_DRAW: () => soundEngine.playCardDraw(),
+          JAIL: () => soundEngine.playJail(),
+          BANKRUPT: () => soundEngine.playBankrupt(),
+          GAME_OVER: () => soundEngine.playGameOver(),
+        };
+        soundByEvent[activeEvent.type]?.();
       } catch (e) {
         console.error('Error playing event sound:', e);
       }
@@ -60,43 +63,53 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
 
   useEffect(() => {
     const handleTriggerVisual = (data) => {
-      // Check for trade events
       if (data.type === 'TRADE_OFFER') {
+        clearTradeTimers();
         setActiveTrade({ ...data, status: 'pending' });
         try {
           soundEngine.playTradeProposed();
         } catch (e) {
           console.error('Error playing trade proposed sound:', e);
         }
+
+        // UI fails safe even if a response packet is lost.
+        pendingTradeTimerRef.current = setTimeout(() => {
+          setActiveTrade(current => current?.status === 'pending' ? null : current);
+          pendingTradeTimerRef.current = null;
+        }, 31_000);
         return;
       }
 
       if (data.type === 'TRADE_ACCEPTED' || data.type === 'TRADE_DECLINED') {
-        setActiveTrade(prev => prev ? { 
-          ...prev, 
-          status: data.type === 'TRADE_ACCEPTED' ? 'accepted' : 'declined' 
-        } : null);
+        if (pendingTradeTimerRef.current) clearTimeout(pendingTradeTimerRef.current);
+        pendingTradeTimerRef.current = null;
 
+        const status = data.type === 'TRADE_ACCEPTED' ? 'accepted' : 'declined';
+        setActiveTrade(current => current ? { ...current, ...data, status } : null);
         try {
-          if (data.type === 'TRADE_ACCEPTED') {
-            soundEngine.playTradeAccepted();
-          } else if (data.type === 'TRADE_DECLINED') {
-            soundEngine.playTradeDeclined();
-          }
+          if (status === 'accepted') soundEngine.playTradeAccepted();
+          else soundEngine.playTradeDeclined();
         } catch (e) {
           console.error('Error playing trade result sound:', e);
         }
 
-        // Auto-dismiss the completed trade panel after 4 seconds
-        setTimeout(() => setActiveTrade(null), 4000);
-        return;
+        resultTradeTimerRef.current = setTimeout(() => {
+          setActiveTrade(null);
+          resultTradeTimerRef.current = null;
+        }, 4_000);
       }
     };
 
-    socket.on("trigger_visual", handleTriggerVisual);
-
+    socket.on('trigger_visual', handleTriggerVisual);
+    if (import.meta.env.DEV) {
+      window.__testTriggerVisual = handleTriggerVisual;
+    }
     return () => {
-      socket.off("trigger_visual", handleTriggerVisual);
+      socket.off('trigger_visual', handleTriggerVisual);
+      if (import.meta.env.DEV) {
+        delete window.__testTriggerVisual;
+      }
+      clearTradeTimers();
     };
   }, [socket]);
 
@@ -106,10 +119,10 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
     <AnimatePresence>
       {/* Standard Events (Rent, Buy, Draw) */}
       {event && (
-        <motion.div 
-          initial={{ opacity: 0 }} 
-          animate={{ opacity: 1 }} 
-          exit={{ opacity: 0 }} 
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
           className={`fixed inset-0 z-[100] flex items-center justify-center pointer-events-none ${(event.type === 'CARD_DRAW' || event.type === 'BUILD' || event.type === 'GAME_OVER') ? '' : 'bg-black/60 backdrop-blur-sm'}`}
         >
 
@@ -121,7 +134,7 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
             const rentIndex = event.houses || 0;
 
             return (
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
@@ -297,10 +310,10 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
                 </div>
 
                 {/* Monopoly Man */}
-                <img 
-                  src="/monopoly_man.png" 
-                  alt="Monopoly Man" 
-                  className="w-[18vh] h-auto object-contain drop-shadow-2xl" 
+                <img
+                  src="/monopoly_man.png"
+                  alt="Monopoly Man"
+                  className="w-[18vh] h-auto object-contain drop-shadow-2xl"
                 />
               </motion.div>
             </motion.div>
@@ -560,7 +573,7 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
                     style={{ width: 320, background: `linear-gradient(90deg, transparent, ${colorHex}, transparent)` }}
                   />
                   <h1 className="text-4xl font-black text-white uppercase tracking-wide" style={{ fontFamily: 'Montserrat, sans-serif' }}>
-                    {event.player} <span style={{ color: colorHex }}>ACQUIRED</span>
+                    <span title={event.player}>{event.player && event.player.length > 12 ? event.player.slice(0, 12) + '...' : event.player}</span> <span style={{ color: colorHex }}>ACQUIRED</span>
                   </h1>
                   <h2 className="text-2xl font-bold mt-1 uppercase tracking-widest" style={{ color: '#a1a1aa', fontFamily: 'Plus Jakarta Sans' }}>{event.card}</h2>
                   <motion.div
@@ -764,7 +777,7 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
                     style={{ width: 280, background: `linear-gradient(90deg, ${accentHex}, ${accentHex}88)` }}
                   />
                   <h1 className="text-5xl font-black text-white uppercase tracking-wide">
-                    {event.player} <span style={{ color: accentHex }}>BUILT ON</span>
+                    <span title={event.player}>{event.player && event.player.length > 12 ? event.player.slice(0, 12) + '...' : event.player}</span> <span style={{ color: accentHex }}>BUILT ON</span>
                   </h1>
                   <h2 className="text-4xl font-bold text-white mt-1 uppercase tracking-widest">{event.city}</h2>
                   <motion.div
@@ -840,20 +853,39 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
             );
           })()}
 
+          {event.type === 'JAIL' && (() => {
+            let jailReasonText = 'Sent directly to Jail!';
+            if (event.reason === 'go_to_jail') jailReasonText = 'Landed on Go to Jail!';
+            else if (event.reason === 'three_doubles') jailReasonText = 'Rolled three doubles in a row!';
+            else if (event.reason === 'card') jailReasonText = 'Go Directly to Jail card!';
+            return (
+              <motion.div
+                initial={{ opacity: 0, scale: 3 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="bg-zinc-900 w-full py-12 text-center border-y-[16px] border-black shadow-[0_0_100px_rgba(0,0,0,0.8)]"
+              >
+                <h1 className="text-8xl font-black text-red-500 tracking-widest uppercase">SENT TO JAIL!</h1>
+                <p className="text-4xl text-zinc-100 font-bold mt-4 uppercase" title={event.player}>{event.player && event.player.length > 12 ? event.player.slice(0, 12) + '...' : event.player}</p>
+                <p className="text-xl text-zinc-400 font-semibold mt-2 font-mono uppercase">{jailReasonText}</p>
+              </motion.div>
+            );
+          })()}
+
           {event.type === 'BANKRUPT' && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 3 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
               className="bg-red-700 w-full py-12 text-center border-y-[16px] border-black shadow-[0_0_100px_rgba(255,0,0,0.5)]"
             >
               <h1 className="text-8xl font-black text-white tracking-widest uppercase">BANKRUPT!</h1>
-              <p className="text-4xl text-red-200 font-bold mt-4 uppercase">{event.player} is out of the game!</p>
+              <p className="text-4xl text-red-200 font-bold mt-4 uppercase" title={event.player}>{event.player && event.player.length > 12 ? event.player.slice(0, 12) + '...' : event.player} is out of the game!</p>
             </motion.div>
           )}
 
           {event.type === 'GAME_OVER' && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.5 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0 }}
@@ -863,14 +895,14 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
               <h1 className="text-8xl font-black text-emerald-400 tracking-widest uppercase animate-bounce" style={{ fontFamily: 'Plus Jakarta Sans' }}>
                 🏆 VICTORY! 🏆
               </h1>
-              <p className="text-4xl text-white font-extrabold uppercase tracking-wide" style={{ fontFamily: 'Plus Jakarta Sans' }}>
-                {event.winner} WINS THE GAME!
+              <p className="text-4xl text-white font-extrabold uppercase tracking-wide" style={{ fontFamily: 'Plus Jakarta Sans' }} title={event.winner}>
+                {event.winner && event.winner.length > 12 ? event.winner.slice(0, 12) + '...' : event.winner} WINS THE GAME!
               </p>
             </motion.div>
           )}
 
           {event.type === 'CARD_DRAW' && (
-            <motion.div 
+            <motion.div
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.8, opacity: 0 }}
@@ -880,12 +912,12 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
               {/* Outer black border + white padding + inner black border */}
               <div className="w-full h-full bg-white border-[0.4vh] border-black p-[0.6vh] shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)]">
                 <div className="w-full h-full border-[0.2vh] border-black flex flex-col relative overflow-hidden">
-                  
+
                   {/* Top Header */}
                   <h1 className="text-[3.2vh] font-black text-black uppercase tracking-widest text-center mt-[3vh]" style={{ fontFamily: 'Plus Jakarta Sans' }}>
                     {event.deck}
                   </h1>
-                  
+
                   <div className="flex-1 flex w-full relative">
                     {/* Left text area */}
                     <div className="flex flex-col items-center justify-center w-[55%] pl-[3vh] pr-[1vh]">
@@ -895,17 +927,17 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
                         </p>
                       ))}
                     </div>
- 
+
                     {/* Right side Monopoly Man */}
                     <div className="absolute right-[-1.5vh] bottom-[-1vh] w-[26vh] flex items-end justify-end">
-                      <img 
-                        src="/monopoly_man.png" 
-                        alt="Monopoly Man" 
+                      <img
+                        src="/monopoly_man.png"
+                        alt="Monopoly Man"
                         className="w-full h-auto object-contain"
                       />
                     </div>
                   </div>
-                  
+
                 </div>
               </div>
             </motion.div>

@@ -596,7 +596,7 @@ function LobbyScreen({ socket, room = 'ABCD', gameState }) {
 function MobileActiveLobbyScreen({ socket, room, gameState, myId }) {
   const isLeader = gameState?.players?.[0]?.id === myId;
   const canStart = gameState?.players?.length >= 2;
-  
+
   return (
     <div className="flex flex-col justify-between px-6 pb-8 pt-6 select-none" style={{ background: '#fcf9f8', height: '100dvh' }}>
       <div className="flex-1 flex flex-col items-center justify-start overflow-y-auto no-scrollbar">
@@ -651,8 +651,8 @@ function MobileActiveLobbyScreen({ socket, room, gameState, myId }) {
       {isLeader && (
         <div className="shrink-0 w-full flex flex-col gap-3">
           <p className="text-center text-xs text-zinc-500 font-bold font-sans">
-            {canStart 
-              ? "You are the Lobby Leader. Tap below to start the game." 
+            {canStart
+              ? "You are the Lobby Leader. Tap below to start the game."
               : "Waiting for at least 1 more player to join."}
           </p>
           <button
@@ -683,6 +683,12 @@ export default function ControllerComponent({ socket }) {
   const [gameState, setGameState] = useState(null);
   const [modal, setModal] = useState(null);
   const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    if (navigator.vibrate) navigator.vibrate(200);
+    setTimeout(() => setToast(null), 3000);
+  };
   const [activeTab, setActiveTab] = useState('action'); // action | portfolio | trade | guide
   const [tradeOffer, setTradeOffer] = useState(null);
   const [auctionData, setAuctionData] = useState(null);
@@ -733,6 +739,8 @@ export default function ControllerComponent({ socket }) {
 
   const committedSeqRef = useRef(0);
   const latestSeqRef = useRef(0);
+  const buyPromptTimeoutRef = useRef(null);
+  const movementTimersRef = useRef(new Set());
 
   useEffect(() => {
     const onGameUpdate = (state) => {
@@ -787,6 +795,13 @@ export default function ControllerComponent({ socket }) {
           }
         }
 
+        if (prevGameState && state && prevGameState.currentTurn !== state.currentTurn) {
+          if (buyPromptTimeoutRef.current) {
+            clearTimeout(buyPromptTimeoutRef.current);
+            buyPromptTimeoutRef.current = null;
+          }
+        }
+
         setGameState(state);
         setView(v => {
           if (v === 'LOBBY' && state.players.some(p => p.id === socket.id)) return 'GAME';
@@ -798,12 +813,16 @@ export default function ControllerComponent({ socket }) {
         if (myState && !myState.needsToRaiseMoney) setRaisingMoney(false);
         if (state.auction?.status) setAuctionData(state.auction);
         else if (!state.auction?.status) setAuctionData(prev => prev ? null : prev);
-        
+
         lastRollSumRef.current = 0;
       };
 
       if (delayTime > 0) {
-        setTimeout(applyUpdate, delayTime);
+        const timerId = setTimeout(() => {
+          movementTimersRef.current.delete(timerId);
+          applyUpdate();
+        }, delayTime);
+        movementTimersRef.current.add(timerId);
       } else {
         // Non-delayed (instant) updates commit immediately — this advances committedSeqRef
         // so any in-flight delayed updates (with smaller seq) will be dropped when they fire
@@ -811,7 +830,15 @@ export default function ControllerComponent({ socket }) {
         applyUpdate();
       }
     };
-    const onAuctionStart = (data) => { setAuctionData(data); setModal(null); setView('AUCTION'); };
+    const onAuctionStart = (data) => {
+      if (buyPromptTimeoutRef.current) {
+        clearTimeout(buyPromptTimeoutRef.current);
+        buyPromptTimeoutRef.current = null;
+      }
+      setAuctionData(data);
+      setModal(null);
+      setView('AUCTION');
+    };
     const onAuctionUpdate = (data) => setAuctionData(prev => ({ ...prev, ...data }));
     const onAuctionEnd = () => { setAuctionData(null); setView('GAME'); };
     const onPromptBuy = (tile) => {
@@ -819,8 +846,14 @@ export default function ControllerComponent({ socket }) {
       const currentPos = currentMe ? currentMe.position : 0;
       const roll = lastRollSumRef.current || ((tile.id - currentPos + 40) % 40);
       const delayTime = 2200 + (roll * 250);
-      setTimeout(() => {
+
+      if (buyPromptTimeoutRef.current) {
+        clearTimeout(buyPromptTimeoutRef.current);
+      }
+
+      buyPromptTimeoutRef.current = setTimeout(() => {
         setModal({ type: 'BUY', tile });
+        buyPromptTimeoutRef.current = null;
       }, delayTime);
     };
     const onTradeOffer = (offer) => setTradeOffer(offer);
@@ -847,6 +880,14 @@ export default function ControllerComponent({ socket }) {
       localStorage.removeItem(`monopoly_color_${room}`);
     };
 
+    const onDisconnect = () => {
+      if (buyPromptTimeoutRef.current) {
+        clearTimeout(buyPromptTimeoutRef.current);
+        buyPromptTimeoutRef.current = null;
+      }
+    };
+
+    const currentMovementTimers = movementTimersRef.current;
     socket.on('game_update', onGameUpdate);
     socket.on('auction_start', onAuctionStart);
     socket.on('auction_update', onAuctionUpdate);
@@ -858,21 +899,25 @@ export default function ControllerComponent({ socket }) {
     socket.on('raise_money', onRaiseMoney);
     socket.on('raise_money_resolved', onRaiseMoneyResolved);
     socket.on('game_over', onGameOver);
+    socket.on('disconnect', onDisconnect);
     return () => {
+      currentMovementTimers.forEach(clearTimeout);
+      currentMovementTimers.clear();
+      if (buyPromptTimeoutRef.current) {
+        clearTimeout(buyPromptTimeoutRef.current);
+        buyPromptTimeoutRef.current = null;
+      }
       socket.off('game_update', onGameUpdate); socket.off('auction_start', onAuctionStart);
       socket.off('auction_update', onAuctionUpdate); socket.off('auction_end', onAuctionEnd);
       socket.off('prompt_buy', onPromptBuy); socket.off('trade_offer', onTradeOffer);
       socket.off('trigger_visual', onTriggerVisual); socket.off('action_error', onActionError);
       socket.off('raise_money', onRaiseMoney); socket.off('raise_money_resolved', onRaiseMoneyResolved);
       socket.off('game_over', onGameOver);
+      socket.off('disconnect', onDisconnect);
     };
   }, [socket, room]);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    if (navigator.vibrate) navigator.vibrate(200);
-    setTimeout(() => setToast(null), 3000);
-  };
+
 
   // ── State routing ──────────────────────────────────────────────────────────
   const resolveQueue = gameState?.bankruptcyResolveQueue;
@@ -911,7 +956,7 @@ export default function ControllerComponent({ socket }) {
           <p className="text-xs text-[#88717a] mb-6 font-bold uppercase tracking-wider font-sans">
             Roll Results
           </p>
-          
+
           <div className="w-full flex flex-col gap-3 mb-6">
             {gameState.startingRolls.map((roundInfo, idx) => (
               <div key={idx} className="bg-white border border-[#eae7e7] p-4 rounded-xl flex flex-col gap-2 shadow-sm">
@@ -944,7 +989,7 @@ export default function ControllerComponent({ socket }) {
             </div>
           )}
         </div>
-        
+
         <button
           onClick={() => setDismissedRollsMobile(true)}
           className="w-full py-4 rounded-xl font-black text-sm uppercase tracking-widest text-white shadow-md btn-press cursor-pointer"
@@ -1461,7 +1506,7 @@ export default function ControllerComponent({ socket }) {
                     </div>
                   </div>
                 )}
-                
+
                 {/* Simplified rent for Stations */}
                 {modal.tile.type === 'station' && (
                   <div className="rounded-xl overflow-hidden mb-4 p-3" style={{ border: '1px solid #eae7e7', background: '#f6f3f2' }}>
@@ -1482,7 +1527,7 @@ export default function ControllerComponent({ socket }) {
                     const assetsVal = getPlayerAssetValue(me, gameState);
                     const canAffordBuy = (me?.cash || 0) + assetsVal >= modal.tile.price;
                     return (
-                      <button 
+                      <button
                         disabled={!canAffordBuy}
                         onClick={() => { socket.emit('buy_property', { room, propertyId: modal.tile.id }); setModal(null); }}
                         className="flex-1 py-3 rounded-xl font-bold text-sm btn-press disabled:opacity-40"

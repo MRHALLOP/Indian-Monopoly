@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import Confetti from 'react-confetti';
 import { FaCarSide } from 'react-icons/fa';
 import { CITIES } from '../constants';
@@ -35,12 +35,19 @@ function initials(name = '') {
     : name.slice(0, 2).toUpperCase();
 }
 
-function bundleTitle(ids = [], cash = 0, jailCards = 0) {
+function bundleTitle(ids = [], cash = 0, jailCards = 0, limit = false) {
   const bits = [];
   if (cash > 0) bits.push(`₹${money(cash)}`);
   if (jailCards > 0) bits.push(`${jailCards} Jail Key${jailCards > 1 ? 's' : ''}`);
-  const names = ids.map(property).filter(Boolean).map(item => item.name);
-  if (names.length) bits.push(names.join(', '));
+  const propertiesList = ids.map(property).filter(Boolean);
+  if (propertiesList.length > 0) {
+    if (limit && propertiesList.length > 2) {
+      const firstTwo = propertiesList.slice(0, 2).map(item => item.name).join(', ');
+      bits.push(`${firstTwo} + ${propertiesList.length - 2} more`);
+    } else {
+      bits.push(propertiesList.map(item => item.name).join(', '));
+    }
+  }
   return bits.length ? bits.join(' + ') : 'Nothing';
 }
 
@@ -76,22 +83,28 @@ function bundleIcon(ids = [], cash = 0, jailCards = 0) {
   return '🤝';
 }
 
-export default function ExactTradeOverlay({
-  activeTrade,
-  tradeTimeLeft = 30,
-  boardState,
-  players = [],
-}) {
+export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardState, players }) {
+  const shouldReduceMotion = useReducedMotion();
   const [localTimeLeft, setLocalTimeLeft] = useState(tradeTimeLeft);
+  const [prevTrade, setPrevTrade] = useState(activeTrade);
+  const [prevTimeLeft, setPrevTimeLeft] = useState(tradeTimeLeft);
 
-  useEffect(() => {
+  if (activeTrade !== prevTrade || tradeTimeLeft !== prevTimeLeft) {
+    setPrevTrade(activeTrade);
+    setPrevTimeLeft(tradeTimeLeft);
     setLocalTimeLeft(tradeTimeLeft);
-  }, [tradeTimeLeft, activeTrade]);
+  }
 
   useEffect(() => {
     if (!activeTrade || activeTrade.status !== 'pending') return;
     const timer = setInterval(() => {
-      setLocalTimeLeft(prev => Math.max(0, prev - 1));
+      setLocalTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
     return () => clearInterval(timer);
   }, [activeTrade]);
@@ -110,6 +123,18 @@ export default function ExactTradeOverlay({
   const heading = accepted ? 'DEAL COMPLETED' : declined ? 'DEAL REJECTED' : 'DEAL ON THE TABLE';
   const eyebrow = accepted ? 'Deal finalized' : declined ? 'Deal declined' : 'Incoming offer';
   const stamp = accepted ? 'DEAL COMPLETED!' : declined ? 'DEAL REJECTED' : `Needs your call, ${activeTrade.targetName}`;
+
+  const offererInitial = shouldReduceMotion ? { opacity: 0 } : { x: '-6cqw', opacity: 0, rotate: -1.2 };
+  const offererAnimate = shouldReduceMotion ? { opacity: 1 } : { x: 0, opacity: 1, rotate: -1.2 };
+
+  const receiverInitial = shouldReduceMotion ? { opacity: 0 } : { x: '6cqw', opacity: 0, rotate: 1.2 };
+  const receiverAnimate = shouldReduceMotion ? { opacity: 1 } : { x: 0, opacity: 1, rotate: 1.2 };
+
+  const dealInitial = shouldReduceMotion ? { opacity: 0 } : { scale: .94, opacity: 0 };
+  const dealAnimate = shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1 };
+
+  const stampInitial = shouldReduceMotion ? { opacity: 0 } : { scale: 2, opacity: 0, rotate: 20 };
+  const stampAnimate = shouldReduceMotion ? { opacity: 1 } : { opacity: 1, scale: 1, rotate: 6 };
 
   return (
     <motion.div
@@ -450,7 +475,7 @@ export default function ExactTradeOverlay({
           width: .625cqw;
           aspect-ratio: 1;
           border-radius: 50%;
-          background: ${accepted ? 'var(--success)' : declined ? 'var(--danger)' : 'var(--yellow)'};
+          background: ${accepted ? 'var(--success)' : (declined || localTimeLeft === 0) ? 'var(--danger)' : 'var(--yellow)'};
           box-shadow: 0 0 0 .3125cqw color-mix(in oklch, var(--state) 20%, transparent);
           animation: tradePulse 1.7s cubic-bezier(.16,1,.3,1) infinite;
         }
@@ -501,8 +526,8 @@ export default function ExactTradeOverlay({
           <div className="stage">
             <motion.article
               className="party offerer"
-              initial={{ x: '-6cqw', opacity: 0, rotate: -1.2 }}
-              animate={{ x: 0, opacity: 1, rotate: -1.2 }}
+              initial={offererInitial}
+              animate={offererAnimate}
               transition={{ duration: .5, ease: [0.16, 1, 0.3, 1] }}
             >
               <div className="role">Offer made by</div>
@@ -513,15 +538,27 @@ export default function ExactTradeOverlay({
 
             <motion.article
               className="deal"
-              initial={{ scale: .94, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              initial={dealInitial}
+              animate={dealAnimate}
               transition={{ duration: .5, delay: .08, ease: [0.16, 1, 0.3, 1] }}
             >
               <div className="bundle">
                 <div className="asset-icon">{bundleIcon(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards)}</div>
                 <div className="copy">
                   <div className="bundle-label">{activeTrade.initiatorName} gives</div>
-                  <div className="bundle-title">{bundleTitle(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards)}</div>
+                  <div
+                    className="bundle-title"
+                    title={bundleTitle(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards, false)}
+                    style={{
+                      fontSize: bundleTitle(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards, true).length > 42 ? '1.6cqw' : '2.375cqw',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {bundleTitle(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards, true)}
+                  </div>
                   <div className="bundle-meta">{bundleMeta(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards, boardState)}</div>
                 </div>
               </div>
@@ -531,7 +568,19 @@ export default function ExactTradeOverlay({
               <div className="bundle reverse">
                 <div className="copy">
                   <div className="bundle-label">{activeTrade.targetName} gives</div>
-                  <div className="bundle-title">{bundleTitle(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards)}</div>
+                  <div
+                    className="bundle-title"
+                    title={bundleTitle(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards, false)}
+                    style={{
+                      fontSize: bundleTitle(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards, true).length > 42 ? '1.6cqw' : '2.375cqw',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden'
+                    }}
+                  >
+                    {bundleTitle(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards, true)}
+                  </div>
                   <div className="bundle-meta">{bundleMeta(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards, boardState)}</div>
                 </div>
                 <div className="asset-icon">{bundleIcon(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards)}</div>
@@ -540,8 +589,8 @@ export default function ExactTradeOverlay({
 
             <motion.article
               className="party receiver"
-              initial={{ x: '6cqw', opacity: 0, rotate: 1.2 }}
-              animate={{ x: 0, opacity: 1, rotate: 1.2 }}
+              initial={receiverInitial}
+              animate={receiverAnimate}
               transition={{ duration: .5, ease: [0.16, 1, 0.3, 1] }}
             >
               <div className="role">{accepted ? 'Accepted by' : declined ? 'Declined by' : 'Waiting on'}</div>
@@ -554,8 +603,8 @@ export default function ExactTradeOverlay({
 
         <motion.div
           className="stamp"
-          initial={{ scale: 2, opacity: 0, rotate: 20 }}
-          animate={{ scale: 1, opacity: 1, rotate: 6 }}
+          initial={stampInitial}
+          animate={stampAnimate}
           transition={{ duration: .55, delay: .2, ease: [0.16, 1, 0.3, 1] }}
         >
           {stamp}
@@ -570,7 +619,7 @@ export default function ExactTradeOverlay({
             <span className="timer-label">{pending ? 'Offer expires in' : 'Trade closed'}</span>
             <div className="time">{pending ? `00:${String(localTimeLeft).padStart(2, '0')}` : '--:--'}</div>
           </div>
-          <div className="status"><span className="pulse" />{accepted ? 'Accepted' : declined ? 'Declined' : 'Waiting for response'}</div>
+          <div className="status"><span className="pulse" />{accepted ? 'Accepted' : declined ? 'Declined' : (localTimeLeft === 0 ? 'Offer expired' : 'Waiting for response')}</div>
         </footer>
       </main>
     </motion.div>
