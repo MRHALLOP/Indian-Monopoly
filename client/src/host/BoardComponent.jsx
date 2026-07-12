@@ -558,9 +558,11 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   const [gameState, setGameState] = useState({
     players: [],
     boardState: {},
-    landedTile: null
+    landedTile: null,
+    gameStatus: 'lobby'
   });
   const [auctionState, setAuctionState] = useState(null);
+  const [dismissedStartingRolls, setDismissedStartingRolls] = useState(false);
 
   // Sequential Visual States
   const [visualPlayers, setVisualPlayers] = useState([]);
@@ -982,7 +984,109 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     return { gridRowStart: row, gridColumnStart: col };
   }
 
+  // Reset starting rolls overlay when game starts or resets to lobby
+  useEffect(() => {
+    if (gameState && gameState.gameStatus === 'lobby') {
+      setDismissedStartingRolls(false);
+    }
+  }, [gameState?.gameStatus]);
+
+  // Auto-dismiss starting rolls after 10s
+  useEffect(() => {
+    if (gameState && gameState.startingRolls && gameState.startingRolls.length > 0) {
+      const timer = setTimeout(() => {
+        setDismissedStartingRolls(true);
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [gameState?.startingRolls]);
+
   if (!gameState) return <div className="text-white text-4xl flex h-screen items-center justify-center bg-zinc-950 font-bold tracking-widest animate-pulse">INITIALIZING LOBBY...</div>;
+
+  if (gameState.gameStatus === 'lobby') {
+    return (
+      <div className="h-screen w-screen bg-zinc-950 flex flex-col items-center justify-center text-white relative font-sans overflow-hidden">
+        {/* Animated Background */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(158,33,109,0.15),transparent_70%)] pointer-events-none" />
+        
+        {/* Lobby Container */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative w-[80%] max-w-[800px] bg-zinc-900/60 backdrop-blur-md border border-zinc-800 p-12 rounded-[2rem] shadow-2xl flex flex-col gap-8 select-none"
+        >
+          {/* Header */}
+          <div className="flex justify-between items-center border-b border-zinc-800/80 pb-6">
+            <div>
+              <h1 className="text-5xl font-black tracking-wider bg-gradient-to-r from-yellow-400 to-amber-500 bg-clip-text text-transparent uppercase font-oswald">Indian Monopoly</h1>
+              <p className="text-zinc-500 text-sm mt-1.5 font-sans font-medium">Waiting for players to connect...</p>
+            </div>
+            <div className="bg-zinc-800/80 px-6 py-3 rounded-2xl flex flex-col items-end border border-zinc-700 select-none">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-400 font-sans">Room Code</span>
+              <span className="text-3xl font-black tracking-wider text-yellow-400 uppercase font-mono">{room}</span>
+            </div>
+          </div>
+          
+          {/* Players Grid */}
+          <div className="grid grid-cols-2 gap-5 my-2">
+            {gameState.players.map((p, idx) => (
+              <motion.div
+                key={p.id}
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center gap-4 bg-zinc-950/40 border border-zinc-800/80 p-5 rounded-2xl"
+                style={{ borderLeft: `6px solid ${p.color}` }}
+              >
+                <div className="w-12 h-12 rounded-full flex items-center justify-center border-2 border-white/20 shadow-lg" style={{ backgroundColor: p.color }}>
+                  <TokenIcon color="#fff" size={24} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-zinc-100 font-sans tracking-tight leading-tight">{p.name}</h3>
+                  <span className="text-xs text-zinc-500 font-sans font-semibold mt-0.5 block">Player {idx + 1}</span>
+                </div>
+              </motion.div>
+            ))}
+            {/* Empty slots */}
+            {[...Array(Math.max(0, 4 - gameState.players.length))].map((_, i) => (
+              <div key={i} className="flex items-center gap-4 bg-zinc-950/20 border border-dashed border-zinc-850 p-5 rounded-2xl opacity-40">
+                <div className="w-12 h-12 rounded-full bg-zinc-800/40 flex items-center justify-center border border-dashed border-zinc-750">
+                  <span className="text-zinc-650 text-xl font-bold font-sans">?</span>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-zinc-650 font-sans">Waiting...</h3>
+                  <span className="text-xs text-zinc-700 font-sans font-semibold mt-0.5 block">Empty Slot</span>
+                </div>
+              </div>
+            ))}
+          </div>
+          
+          {/* Start Button */}
+          <div className="flex justify-between items-center border-t border-zinc-800/80 pt-8">
+            <span className="text-sm text-zinc-400 font-sans font-medium">
+              {gameState.players.length < 2 
+                ? "At least 2 players are required to start" 
+                : `${gameState.players.length} players connected`}
+            </span>
+            <button
+              onClick={() => {
+                if (gameState.players.length >= 2) {
+                  socket.emit('start_game', { room });
+                }
+              }}
+              disabled={gameState.players.length < 2}
+              className={`px-10 py-4 rounded-2xl font-black uppercase tracking-wider text-sm transition-all shadow-lg font-sans ${
+                gameState.players.length < 2
+                  ? 'bg-zinc-850 text-zinc-650 border border-zinc-800 cursor-not-allowed'
+                  : 'bg-yellow-400 text-zinc-900 hover:bg-yellow-300 hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(250,204,21,0.2)] cursor-pointer'
+              }`}
+            >
+              Start Game
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen w-screen bg-zinc-950 flex items-center justify-center overflow-hidden text-black relative font-oswald">
@@ -993,6 +1097,71 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       `}</style>
       <VisualEvents activeEvent={activeVisualEvent} setActiveEvent={setActiveVisualEvent} socket={socket} boardState={gameState.boardState} players={gameState.players} />
       <AuctionDisplay auctionState={auctionState} allPlayers={gameState.players} />
+      
+      {/* Starting Rolls Overlay */}
+      <AnimatePresence>
+        {gameState && gameState.startingRolls && gameState.startingRolls.length > 0 && !dismissedStartingRolls && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-[200] bg-zinc-950/95 backdrop-blur-md flex items-center justify-center text-white"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-zinc-900/80 border border-zinc-800 p-8 rounded-3xl max-w-[600px] w-[90%] flex flex-col gap-6 shadow-2xl relative select-none"
+            >
+              <div className="text-center">
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-yellow-400 font-sans">Turn Order Selection</span>
+                <h2 className="text-3xl font-black tracking-wide uppercase mt-1 text-zinc-100 font-sans">Starting Rolls</h2>
+              </div>
+              
+              <div className="flex flex-col gap-4 max-h-[40vh] overflow-y-auto pr-2 no-scrollbar font-sans">
+                {gameState.startingRolls.map((roundInfo, idx) => (
+                  <div key={idx} className="bg-zinc-950/40 border border-zinc-850 p-4 rounded-2xl flex flex-col gap-2">
+                    <p className="text-xs font-black uppercase text-zinc-500">
+                      Round {roundInfo.round} {roundInfo.round > 1 ? '(Tie Breaker)' : ''}
+                    </p>
+                    <div className="flex flex-col gap-1.5">
+                      {roundInfo.rolls.map((r, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm font-semibold">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: r.color }} />
+                            <span className="text-zinc-300">{r.name}</span>
+                          </div>
+                          <span className="font-bold text-yellow-400">
+                            Rolled {r.roll} ({r.d1} + {r.d2})
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {gameState.startingWinnerName && (
+                <div className="bg-yellow-400/10 border border-yellow-400/20 p-4 rounded-2xl flex items-center justify-between font-sans">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">👑</span>
+                    <div>
+                      <p className="text-xs text-yellow-400/80 font-bold uppercase tracking-wider">Turns order winner</p>
+                      <h4 className="text-lg font-black text-yellow-400 uppercase">{gameState.startingWinnerName} starts the game!</h4>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => setDismissedStartingRolls(true)}
+                className="w-full py-4 bg-zinc-850 hover:bg-zinc-800 active:scale-95 transition-all text-white rounded-2xl font-black uppercase tracking-wider text-sm border border-zinc-750 font-sans"
+              >
+                Dismiss &amp; Start Playing
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* --- Left Sidebar: Room Info --- */}
       <div className="absolute left-[4vh] top-1/2 -translate-y-1/2 flex flex-col gap-4 z-10 w-[15rem]">

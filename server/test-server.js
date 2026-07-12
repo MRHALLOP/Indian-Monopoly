@@ -1,4 +1,6 @@
 const assert = require('assert');
+const fs = require('fs');
+const path = require('path');
 const serverModule = require('./server');
 
 const {
@@ -32,18 +34,56 @@ serverModule.io.emit = (event, data) => {
   emittedEvents.push({ target: 'all', event, data });
 };
 
-// Helper mock socket object
-function createMockSocket(id) {
-  return {
-    id,
+// Helper to set up a test game and mock Socket.IO connections
+function setupTestGame(roomId, playersData = []) {
+  // Clear room
+  delete rooms[roomId];
+  
+  // Register host mock socket
+  const hostSocketMock = {
+    id: 'host-socket-id',
+    join: () => {},
+    on: (event, handler) => {
+      hostSocketMock._handlers[event] = handler;
+    },
     emit: (event, data) => {
-      if (event === 'action_error') {
-        actionErrors.push({ socketId: id, error: data });
-      } else {
-        emittedEvents.push({ target: id, event, data });
-      }
-    }
+      emittedEvents.push({ target: 'host', event, data });
+    },
+    _handlers: {}
   };
+  
+  const connectionListeners = serverModule.io.listeners('connection');
+  connectionListeners.forEach(listener => listener(hostSocketMock));
+  
+  // Trigger create_room on host
+  hostSocketMock._handlers['create_room'](roomId);
+  const game = rooms[roomId];
+  game.hostId = 'host-socket-id';
+  
+  // Connect players
+  const sockets = playersData.map(p => {
+    const socketMock = {
+      id: p.id,
+      join: () => {},
+      on: (event, handler) => {
+        socketMock._handlers[event] = handler;
+      },
+      emit: (event, data) => {
+        emittedEvents.push({ target: p.id, event, data });
+      },
+      _handlers: {},
+      _emitted: []
+    };
+    
+    connectionListeners.forEach(listener => listener(socketMock));
+    
+    // Join game
+    socketMock._handlers['join_game']({ room: roomId, name: p.name, color: p.color, clientId: p.clientId || p.id });
+    
+    return socketMock;
+  });
+  
+  return { game, sockets, hostSocket: hostSocketMock };
 }
 
 let testCount = 0;
@@ -66,28 +106,31 @@ function runTest(name, fn) {
 // ==========================================
 // 1. start requires 2 players
 // ==========================================
-runTest('start requires 2 players', () => {
-  const game = {
-    hostId: 'host-socket',
-    players: [{ id: 'p1', name: 'Aarav', cash: 1500 }],
-    gameStatus: 'lobby',
-    logs: [],
-    testDiceQueue: [4, 4]
-  };
+runTest('start requires 2 players (via actual Socket.IO events)', () => {
+  const { game, hostSocket } = setupTestGame('ROOM1', [
+    { id: 'p1', name: 'Aarav', color: '#ef4444' }
+  ]);
   
-  // Simulate starting with 1 player
-  if (game.players.length < 2) {
-    game.logs.push('Error: At least 2 players required.');
-  } else {
-    game.gameStatus = 'active';
-  }
+  // Host attempts to start game with 1 player
+  hostSocket._handlers['start_game']({ room: 'ROOM1' });
   assert.strictEqual(game.gameStatus, 'lobby');
   
   // Add 2nd player
-  game.players.push({ id: 'p2', name: 'Diya', cash: 1500 });
-  if (game.players.length >= 2) {
-    game.gameStatus = 'active';
-  }
+  const p2Socket = {
+    id: 'p2',
+    join: () => {},
+    on: (event, handler) => { p2Socket._handlers[event] = handler; },
+    emit: (event, data) => {
+      emittedEvents.push({ target: 'p2', event, data });
+    },
+    _handlers: {}
+  };
+  const connectionListeners = serverModule.io.listeners('connection');
+  connectionListeners.forEach(listener => listener(p2Socket));
+  p2Socket._handlers['join_game']({ room: 'ROOM1', name: 'Diya', color: '#3b82f6', clientId: 'p2' });
+  
+  // Host starts game with 2 players
+  hostSocket._handlers['start_game']({ room: 'ROOM1' });
   assert.strictEqual(game.gameStatus, 'active');
 });
 
@@ -117,50 +160,70 @@ runTest('starting ties among tied players', () => {
 // ==========================================
 // 3. late join blocked / reconnect allowed
 // ==========================================
-runTest('late join blocked / reconnect allowed', () => {
-  const game = {
-    gameStatus: 'active',
-    players: [
-      { id: 'p1', clientId: 'c1', name: 'Aarav', connected: true },
-      { id: 'p2', clientId: 'c2', name: 'Diya', connected: true }
-    ],
-    logs: []
+runTest('late join blocked / reconnect allowed (via actual Socket.IO events)', () => {
+  const { game, hostSocket } = setupTestGame('ROOM3', [
+    { id: 'p1', name: 'Aarav', color: '#ef4444' },
+    { id: 'p2', name: 'Diya', color: '#3b82f6' }
+  ]);
+  
+  // Start game
+  hostSocket._handlers['start_game']({ room: 'ROOM3' });
+  assert.strictEqual(game.gameStatus, 'active');
+  
+  // Try to join a new player (late join)
+  const p3Socket = {
+    id: 'p3',
+    join: () => {},
+    on: (event, handler) => { p3Socket._handlers[event] = handler; },
+    emit: (event, data) => {
+      emittedEvents.push({ target: 'p3', event, data });
+    },
+    _handlers: {}
   };
+  const connectionListeners = serverModule.io.listeners('connection');
+  connectionListeners.forEach(listener => listener(p3Socket));
+  p3Socket._handlers['join_game']({ room: 'ROOM3', name: 'Arjun', color: '#10b981', clientId: 'p3' });
   
-  // Attempt late join from a new player
-  const newPlayerJoined = game.gameStatus === 'lobby';
-  assert.strictEqual(newPlayerJoined, false);
+  // Assert p3 is not added and received action_error
+  assert.strictEqual(game.players.length, 2);
+  assert.ok(emittedEvents.some(ee => ee.target === 'p3' && ee.event === 'action_error' && ee.data.includes('started')));
   
-  // Reconnection of existing player
-  const existing = game.players.find(p => p.clientId === 'c1');
-  assert.ok(existing);
-  existing.id = 'p1-new-socket';
-  existing.connected = true;
-  assert.strictEqual(existing.id, 'p1-new-socket');
+  // Reconnect player 1
+  game.players[0].connected = false;
+  const p1ReconnectSocket = {
+    id: 'p1-new',
+    join: () => {},
+    on: (event, handler) => { p1ReconnectSocket._handlers[event] = handler; },
+    emit: () => {},
+    _handlers: {}
+  };
+  connectionListeners.forEach(listener => listener(p1ReconnectSocket));
+  p1ReconnectSocket._handlers['join_game']({ room: 'ROOM3', name: 'Aarav', color: '#ef4444', clientId: 'p1' });
+  
+  assert.strictEqual(game.players[0].connected, true);
+  assert.strictEqual(game.players[0].id, 'p1-new'); // updated socket ID
 });
 
 // ==========================================
 // 4. declined property auction
 // ==========================================
-runTest('declined property auction starts for everyone', () => {
-  const game = {
-    players: [
-      { id: 'p1', name: 'Aarav', cash: 1500 },
-      { id: 'p2', name: 'Diya', cash: 1500 }
-    ],
-    auction: { status: false },
-    logs: []
-  };
+runTest('declined property auction starts for everyone (via actual Socket.IO events)', () => {
+  const { game, sockets, hostSocket } = setupTestGame('ROOM4', [
+    { id: 'p1', name: 'Aarav', color: '#ef4444' },
+    { id: 'p2', name: 'Diya', color: '#3b82f6' }
+  ]);
   
-  // Player declines property
-  game.auction = {
-    status: true,
-    propertyId: 1,
-    currentBid: 0,
-    highestBidder: null,
-    activePlayers: ['p1', 'p2']
-  };
+  hostSocket._handlers['start_game']({ room: 'ROOM4' });
+  
+  // Mock landing on a property (Patna, ID=1)
+  game.pendingBuy = { playerId: 'p1', propertyId: 1 };
+  game.currentTurn = 0; // Aarav's turn
+  
+  // Aarav declines property and starts auction
+  sockets[0]._handlers['start_auction']({ room: 'ROOM4', propertyId: 1 });
+  
   assert.strictEqual(game.auction.status, true);
+  assert.strictEqual(game.auction.propertyId, 1);
 });
 
 // ==========================================
@@ -216,13 +279,31 @@ runTest('no free ₹10 award to last participant who never bid', () => {
 // ==========================================
 // 7. over-cash bid rejected
 // ==========================================
-runTest('over-cash bid rejected', () => {
-  const player = { id: 'p1', name: 'Aarav', cash: 100 };
-  const auction = { currentBid: 50 };
-  const bidAmount = 150;
+runTest('over-cash bid rejected (via actual Socket.IO events)', () => {
+  const { game, sockets, hostSocket } = setupTestGame('ROOM7', [
+    { id: 'p1', name: 'Aarav', color: '#ef4444' },
+    { id: 'p2', name: 'Diya', color: '#3b82f6' }
+  ]);
   
-  const canBid = (auction.currentBid + bidAmount) <= player.cash;
-  assert.strictEqual(canBid, false);
+  hostSocket._handlers['start_game']({ room: 'ROOM7' });
+  
+  // Set Aarav's cash to 100
+  game.players[0].cash = 100;
+  
+  // Setup active auction
+  game.auction = {
+    status: true,
+    propertyId: 1,
+    currentBid: 50,
+    highestBidder: 'p2',
+    activePlayers: ['p1', 'p2']
+  };
+  
+  // Aarav attempts to bid 150 (exceeds cash)
+  sockets[0]._handlers['place_bid']({ room: 'ROOM7', amount: 150 });
+  
+  assert.strictEqual(game.auction.currentBid, 50);
+  assert.ok(emittedEvents.some(ee => ee.target === 'p1' && ee.event === 'action_error' && ee.data.includes('exceed')));
 });
 
 // ==========================================
@@ -502,45 +583,92 @@ runTest('no double GO salary on movement', () => {
 // ==========================================
 // 20. Game lifecycle rejects before start
 // ==========================================
-runTest('game rejects rolls and actions before start', () => {
-  const game = {
-    gameStatus: 'lobby',
-    players: [{ id: 'p1', name: 'Aarav' }]
-  };
-  const isActionAllowed = game.gameStatus === 'active';
-  assert.strictEqual(isActionAllowed, false);
+runTest('game rejects rolls and actions before start (via actual Socket.IO events)', () => {
+  const { game, sockets } = setupTestGame('ROOM20', [
+    { id: 'p1', name: 'Aarav', color: '#ef4444' },
+    { id: 'p2', name: 'Diya', color: '#3b82f6' }
+  ]);
+  
+  // Aarav attempts to roll before game starts
+  sockets[0]._handlers['roll_dice']({ room: 'ROOM20' });
+  
+  assert.strictEqual(game.hasRolled || false, false);
+  assert.ok(emittedEvents.some(ee => ee.target === 'p1' && ee.event === 'action_error' && ee.data.toLowerCase().includes('not active')));
 });
 
 // ==========================================
 // 21. Unmortgage transferred decision
 // ==========================================
-runTest('unmortgage transferred resolution block', () => {
-  const game = {
-    bankruptcyResolveQueue: [{ propertyId: 1, creditorId: 'p2', bankruptPlayerName: 'Aarav' }]
-  };
-  const canAdvance = game.bankruptcyResolveQueue.length === 0;
-  assert.strictEqual(canAdvance, false); // Blocked
+runTest('unmortgage transferred resolution block prevents rolls (via actual Socket.IO events)', () => {
+  const { game, sockets, hostSocket } = setupTestGame('ROOM21', [
+    { id: 'p1', name: 'Aarav', color: '#ef4444' },
+    { id: 'p2', name: 'Diya', color: '#3b82f6' }
+  ]);
+  
+  hostSocket._handlers['start_game']({ room: 'ROOM21' });
+  
+  // Setup resolution queue where p2 must decide on mortgaged property
+  game.bankruptcyResolveQueue = [{ propertyId: 1, creditorId: 'p2', bankruptPlayerName: 'Aarav' }];
+  
+  // Set current turn to player 2 (Diya)
+  game.currentTurn = 1;
+  
+  // Player 2 attempts to roll dice while resolution is pending
+  sockets[1]._handlers['roll_dice']({ room: 'ROOM21' });
+  
+  assert.strictEqual(game.hasRolled || false, false);
+  assert.ok(emittedEvents.some(ee => ee.target === 'p2' && ee.event === 'action_error' && ee.data.includes('Resolve mortgaged')));
 });
 
 // ==========================================
 // 22. Save migration / compatibility
 // ==========================================
-runTest('safely migrates old saves without crash', () => {
-  const oldSave = {
+runTest('safely migrates old saves without crash (via actual game restore handler)', () => {
+  const testRoomId = 'MIGRATE_TEST';
+  const saveFilePath = path.join(__dirname, 'game_saves', `${testRoomId}.json`);
+  
+  // Ensure game_saves directory exists
+  if (!fs.existsSync(path.join(__dirname, 'game_saves'))) {
+    fs.mkdirSync(path.join(__dirname, 'game_saves'));
+  }
+  
+  const oldSaveState = {
     players: [
-      { id: 'p1', name: 'Aarav', getOutOfJailCards: 1 }
-    ]
+      { id: 'p1', name: 'Aarav', color: '#ef4444', getOutOfJailCards: 1 }
+    ],
+    boardState: {},
+    gameStatus: 'active'
   };
   
-  // Run migration
-  oldSave.players.forEach(p => {
-    p.jailCards = p.jailCards || [];
-    if (p.getOutOfJailCards > 0 && p.jailCards.length === 0) {
-      if (p.getOutOfJailCards === 1) p.jailCards.push('chance');
-    }
-  });
+  // Write migration save file to disk
+  fs.writeFileSync(saveFilePath, JSON.stringify(oldSaveState), 'utf8');
   
-  assert.strictEqual(oldSave.players[0].jailCards[0], 'chance');
+  // Mock host connection to trigger room load
+  const hostSocketMock = {
+    id: 'host-socket-migrate',
+    join: () => {},
+    on: (event, handler) => {
+      hostSocketMock._handlers[event] = handler;
+    },
+    emit: () => {},
+    _handlers: {}
+  };
+  const connectionListeners = serverModule.io.listeners('connection');
+  connectionListeners.forEach(listener => listener(hostSocketMock));
+  
+  // Trigger create_room which restores the game from save
+  hostSocketMock._handlers['create_room'](testRoomId);
+  
+  const loadedGame = rooms[testRoomId];
+  assert.ok(loadedGame);
+  assert.strictEqual(loadedGame.players[0].jailCards[0], 'chance');
+  assert.strictEqual(loadedGame.players[0].getOutOfJailCards, 1);
+  
+  // Clean up test save file
+  try {
+    fs.unlinkSync(saveFilePath);
+  } catch (e) {}
+  delete rooms[testRoomId];
 });
 
 console.log(`\n🏆 DETERMINISTIC TESTS RESULT: ${passCount} / ${testCount} PASSED`);

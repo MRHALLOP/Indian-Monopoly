@@ -92,7 +92,7 @@ const chanceDeckMaster = [
   { text: "Speeding challan. Pay ₹15.", type: "money", amount: -15, deckType: "chance" },
   { text: "Advance to Chennai Central. If you pass GO, collect ₹200.", type: "advance_chennai", deckType: "chance" },
   { text: "You have been elected Chairman of the Board. Pay each player ₹50.", type: "chairman", deckType: "chance" },
-  { text: "Won Diwali bumper lottery! Collect ₹100.", type: "money", amount: 100, deckType: "chance" }
+  { text: "Won Diwali bumper lottery! Collect ₹150.", type: "money", amount: 150, deckType: "chance" }
 ];
 
 const chestDeckMaster = [
@@ -132,6 +132,7 @@ function rollDie(game) {
 function determineStartingPlayer(game) {
   let candidates = game.players.map((p, idx) => ({ idx, player: p }));
   let round = 1;
+  game.startingRolls = [];
   while (candidates.length > 1) {
     const rolls = candidates.map(c => {
       const d1 = rollDie(game);
@@ -140,6 +141,11 @@ function determineStartingPlayer(game) {
     });
     const maxRoll = Math.max(...rolls.map(r => r.roll));
     const winners = rolls.filter(r => r.roll === maxRoll);
+    
+    game.startingRolls.push({
+      round,
+      rolls: rolls.map(r => ({ name: r.player.name, color: r.player.color, roll: r.roll, d1: r.d1, d2: r.d2 }))
+    });
     
     const rollDesc = rolls.map(r => `${r.player.name} rolled ${r.roll} (${r.d1}+${r.d2})`).join(', ');
     if (round === 1) {
@@ -150,6 +156,8 @@ function determineStartingPlayer(game) {
     
     if (winners.length === 1) {
       logEvent(game, `> ${winners[0].player.name} starts the game!`);
+      // Also save the winning starting player name
+      game.startingWinnerName = winners[0].player.name;
       return winners[0].idx;
     }
     candidates = winners.map(w => ({ idx: w.idx, player: w.player }));
@@ -777,6 +785,7 @@ io.on('connection', (socket) => {
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
+    if (game.bankruptcyResolveQueue && game.bankruptcyResolveQueue.length > 0) { io.to(socket.id).emit('action_error', 'Resolve mortgaged properties first!'); return; }
     if (game.hasRolled) return;
     const raisingPlayer = game.players.find(p => p.needsToRaiseMoney && !p.bankrupt);
     if (raisingPlayer) return;
@@ -833,6 +842,7 @@ io.on('connection', (socket) => {
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
+    if (game.bankruptcyResolveQueue && game.bankruptcyResolveQueue.length > 0) { io.to(socket.id).emit('action_error', 'Resolve mortgaged properties first!'); return; }
     const raisingPlayer = game.players.find(p => p.needsToRaiseMoney && !p.bankrupt);
     if (raisingPlayer) return;
     if (!game.players || game.players.length === 0) return;
@@ -1122,7 +1132,8 @@ io.on('connection', (socket) => {
   socket.on('start_game', ({ room }) => {
     const game = rooms[room];
     if (!game) return;
-    if (game.hostId !== socket.id) { io.to(socket.id).emit('action_error', 'Only the TV/Host can start the game.'); return; }
+    const isLobbyLeader = game.players[0] && game.players[0].id === socket.id;
+    if (game.hostId !== socket.id && !isLobbyLeader) { io.to(socket.id).emit('action_error', 'Only the TV/Host or Lobby Leader can start the game.'); return; }
     if (game.gameStatus !== 'lobby') { io.to(socket.id).emit('action_error', 'Game has already started.'); return; }
     if (game.players.length < 2) { io.to(socket.id).emit('action_error', 'At least 2 players are required to start the game.'); return; }
     

@@ -592,6 +592,87 @@ function LobbyScreen({ socket, room = 'ABCD', gameState }) {
   );
 }
 
+// ── Active Lobby Screen ──────────────────────────────────────────────────────
+function MobileActiveLobbyScreen({ socket, room, gameState, myId }) {
+  const isLeader = gameState?.players?.[0]?.id === myId;
+  const canStart = gameState?.players?.length >= 2;
+  
+  return (
+    <div className="flex flex-col justify-between px-6 pb-8 pt-6 select-none" style={{ background: '#fcf9f8', height: '100dvh' }}>
+      <div className="flex-1 flex flex-col items-center justify-start overflow-y-auto no-scrollbar">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-[#9e216d]">
+          <Icon name="casino" fill={1} size={36} className="text-white" />
+        </div>
+        <h1 className="text-2xl font-black text-center mb-1" style={{ fontFamily: 'Montserrat', color: '#1b1c1c' }}>
+          Game Lobby
+        </h1>
+        <div className="flex items-center gap-2 mb-6 px-3 py-1.5 rounded-full" style={{ background: '#ffeff6', border: '1px solid #f0c8dd' }}>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest" style={{ color: '#88717a', fontFamily: 'Plus Jakarta Sans' }}>Room</span>
+          <span className="text-sm font-black" style={{ color: '#9e216d', fontFamily: 'Montserrat', letterSpacing: '0.2em' }}>{room}</span>
+        </div>
+
+        <p className="text-xs font-extrabold uppercase tracking-widest text-[#55414a] mb-3 self-start font-sans">
+          Players Connected ({gameState?.players?.length || 0})
+        </p>
+
+        <div className="w-full flex flex-col gap-2 mb-6">
+          {gameState?.players?.map((p, idx) => (
+            <div
+              key={p.id}
+              className="px-4 py-3 rounded-xl flex items-center justify-between border bg-white"
+              style={{
+                borderColor: p.id === myId ? '#9e216d' : '#eae7e7',
+                borderLeft: `6px solid ${p.color}`
+              }}
+            >
+              <div className="flex items-center gap-2">
+                <TokenIcon color={p.color} size={18} />
+                <span className="font-bold text-sm text-[#1b1c1c]" style={{ fontFamily: 'Plus Jakarta Sans' }}>
+                  {p.name} {p.id === myId ? '(You)' : ''}
+                </span>
+              </div>
+              {idx === 0 && (
+                <span className="text-[8px] bg-yellow-105 text-yellow-850 px-1.5 py-0.5 rounded font-black tracking-widest uppercase">Leader</span>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {!isLeader && (
+          <div className="flex items-center gap-2 p-4 bg-zinc-100 rounded-xl border border-zinc-200">
+            <Icon name="hourglass_empty" size={18} className="text-zinc-500 animate-spin" />
+            <p className="text-xs text-zinc-500 font-bold" style={{ fontFamily: 'Plus Jakarta Sans' }}>
+              Waiting for the TV/Lobby Leader to start the game...
+            </p>
+          </div>
+        )}
+      </div>
+
+      {isLeader && (
+        <div className="shrink-0 w-full flex flex-col gap-3">
+          <p className="text-center text-xs text-zinc-500 font-bold font-sans">
+            {canStart 
+              ? "You are the Lobby Leader. Tap below to start the game." 
+              : "Waiting for at least 1 more player to join."}
+          </p>
+          <button
+            onClick={() => socket.emit('start_game', { room })}
+            disabled={!canStart}
+            className="w-full py-4 rounded-xl font-black text-lg uppercase tracking-widest text-white btn-press disabled:opacity-50"
+            style={{
+              background: '#9e216d',
+              boxShadow: '0 4px 0 0 #6c164a',
+              fontFamily: 'Montserrat'
+            }}
+          >
+            Start Game
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Controller ──────────────────────────────────────────────────────────
 export default function ControllerComponent({ socket }) {
   // FIX: room is controller-owned state now, not a fixed prop. Honor a ?room= code
@@ -606,6 +687,7 @@ export default function ControllerComponent({ socket }) {
   const [tradeOffer, setTradeOffer] = useState(null);
   const [auctionData, setAuctionData] = useState(null);
   const [raisingMoney, setRaisingMoney] = useState(false);
+  const [dismissedRollsMobile, setDismissedRollsMobile] = useState(false);
 
   const me = gameState?.players.find(p => p.id === socket.id);
   const isMyTurn = gameState && gameState.players[gameState.currentTurn]?.id === socket.id;
@@ -627,6 +709,27 @@ export default function ControllerComponent({ socket }) {
     if (socket.connected) handleConnect();
     return () => socket.off('connect', handleConnect);
   }, [room, socket]);
+
+  useEffect(() => {
+    if (gameState && gameState.gameStatus === 'lobby') {
+      setDismissedRollsMobile(false);
+    }
+  }, [gameState?.gameStatus]);
+
+  // Auto-reconnect player if name and color exist in local storage for this room
+  useEffect(() => {
+    if (socket && room && gameState && view === 'LOBBY') {
+      const savedName = localStorage.getItem(`monopoly_name_${room}`);
+      const savedColor = localStorage.getItem(`monopoly_color_${room}`);
+      if (savedName && savedColor) {
+        const isAlreadyActive = gameState.players.some(p => p.name === savedName && p.connected && p.id === socket.id);
+        if (!isAlreadyActive) {
+          const clientId = getOrCreateClientId();
+          socket.emit('join_game', { room, name: savedName, color: savedColor, clientId });
+        }
+      }
+    }
+  }, [socket, room, gameState, view]);
 
   const committedSeqRef = useRef(0);
   const latestSeqRef = useRef(0);
@@ -787,14 +890,93 @@ export default function ControllerComponent({ socket }) {
     setView('LOBBY');
   };
 
+  let screenComponent = null;
+
   if (view === 'MODE_SELECT' || !room) {
-    return <ModeSelectScreen onStartNew={startNewGame} onJoin={joinExistingGame} />;
+    screenComponent = <ModeSelectScreen onStartNew={startNewGame} onJoin={joinExistingGame} />;
+  } else if (view === 'LOBBY') {
+    screenComponent = <LobbyScreen socket={socket} room={room} gameState={gameState} />;
+  } else if (gameState && gameState.gameStatus === 'lobby') {
+    screenComponent = <MobileActiveLobbyScreen socket={socket} room={room} gameState={gameState} myId={socket.id} />;
+  } else if (gameState && gameState.startingRolls && gameState.startingRolls.length > 0 && !dismissedRollsMobile) {
+    screenComponent = (
+      <div className="flex flex-col justify-between px-6 pb-8 pt-6 select-none animate-fade-in" style={{ background: '#fcf9f8', height: '100dvh' }}>
+        <div className="flex-1 flex flex-col items-center justify-start overflow-y-auto no-scrollbar">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-yellow-400">
+            <span className="text-3xl">👑</span>
+          </div>
+          <h1 className="text-2xl font-black text-center mb-1" style={{ fontFamily: 'Montserrat', color: '#1b1c1c' }}>
+            Starting Order
+          </h1>
+          <p className="text-xs text-[#88717a] mb-6 font-bold uppercase tracking-wider font-sans">
+            Roll Results
+          </p>
+          
+          <div className="w-full flex flex-col gap-3 mb-6">
+            {gameState.startingRolls.map((roundInfo, idx) => (
+              <div key={idx} className="bg-white border border-[#eae7e7] p-4 rounded-xl flex flex-col gap-2 shadow-sm">
+                <p className="text-[10px] font-black uppercase text-zinc-400 font-sans">
+                  Round {roundInfo.round} {roundInfo.round > 1 ? '(Tie Breaker)' : ''}
+                </p>
+                <div className="flex flex-col gap-1.5 font-sans">
+                  {roundInfo.rolls.map((r, i) => (
+                    <div key={i} className="flex justify-between items-center text-xs font-bold">
+                      <div className="flex items-center gap-1.5">
+                        <TokenIcon color={r.color} size={14} />
+                        <span className="text-zinc-700">{r.name}</span>
+                      </div>
+                      <span className="text-zinc-950 font-black">
+                        Rolled {r.roll} ({r.d1}+{r.d2})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {gameState.startingWinnerName && (
+            <div className="w-full p-4 rounded-xl text-center shadow-sm" style={{ background: '#ffeff6', border: '1px solid #f0c8dd' }}>
+              <span className="text-xs font-black uppercase tracking-wider block mb-1 font-sans" style={{ color: '#9e216d' }}>First Turn</span>
+              <p className="text-sm font-bold text-zinc-800 font-sans">
+                <strong>{gameState.startingWinnerName}</strong> starts the game!
+              </p>
+            </div>
+          )}
+        </div>
+        
+        <button
+          onClick={() => setDismissedRollsMobile(true)}
+          className="w-full py-4 rounded-xl font-black text-sm uppercase tracking-widest text-white shadow-md btn-press cursor-pointer"
+          style={{ background: '#9e216d', boxShadow: '0 4px 0 0 #6c164a', fontFamily: 'Montserrat' }}
+        >
+          Dismiss &amp; Start
+        </button>
+      </div>
+    );
+  } else if (view === 'AUCTION' && auctionData) {
+    screenComponent = <AuctionController socket={socket} room={room} myId={socket.id} auctionState={auctionData} />;
+  } else if (me?.bankrupt) {
+    screenComponent = <BankruptScreen />;
+  } else if (isResolvingBankruptcy) {
+    screenComponent = <BankruptcyResolveScreen socket={socket} gameState={gameState} me={me} room={room} activeResolution={activeResolution} />;
+  } else if (raisingMoney || me?.needsToRaiseMoney) {
+    screenComponent = <RaiseMoneyScreen socket={socket} gameState={gameState} me={me} room={room} />;
   }
-  if (view === 'LOBBY') return <LobbyScreen socket={socket} room={room} gameState={gameState} />;
-  if (view === 'AUCTION' && auctionData) return <AuctionController socket={socket} room={room} myId={socket.id} auctionState={auctionData} />;
-  if (me?.bankrupt) return <BankruptScreen />;
-  if (isResolvingBankruptcy) return <BankruptcyResolveScreen socket={socket} gameState={gameState} me={me} room={room} activeResolution={activeResolution} />;
-  if (raisingMoney || me?.needsToRaiseMoney) return <RaiseMoneyScreen socket={socket} gameState={gameState} me={me} room={room} />;
+
+  if (screenComponent) {
+    return (
+      <div className="w-full h-full relative">
+        {screenComponent}
+        {toast && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-3 rounded-full font-bold text-sm shadow-ambient-md text-white"
+            style={{ background: '#9e216d', fontFamily: 'Plus Jakarta Sans' }}>
+            {toast}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // ── Main Game View ──────────────────────────────────────────────────────────
   return (
