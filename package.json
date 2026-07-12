@@ -1,4 +1,13 @@
 {
+  "private": true,
+  "scripts": {
+    "check:board": "node scripts/check-board-parity.cjs",
+    "test:server": "npm --prefix server test",
+    "test:client": "npm --prefix client run test:unit",
+    "lint": "npm --prefix client run lint",
+    "build": "npm --prefix client run build",
+    "verify": "npm run check:board && npm run test:server && npm run test:client && npm run lint && npm run build"
+  },
   "dependencies": {
     "sharp": "^0.35.2"
   }

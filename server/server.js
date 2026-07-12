@@ -4,39 +4,102 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { CITIES, COLOR_GROUPS } = require('./constants');
+const { createInitialGame, migrateGame, validateGame, publicGameState } = require('./gameState');
 
 const SAVES_DIR = path.join(__dirname, 'game_saves');
 if (!fs.existsSync(SAVES_DIR)) fs.mkdirSync(SAVES_DIR, { recursive: true });
 
+// ─── Room code validation ───────────────────────────────────────────────────
+const ROOM_CODE_RE = /^[A-Z0-9_-]{4,12}$/;
+
+function normalizeRoomCode(value) {
+  if (typeof value !== 'string') return null;
+  const room = value.trim().toUpperCase();
+  return ROOM_CODE_RE.test(room) ? room : null;
+}
+
+function requireRoom(raw, socket) {
+  const room = normalizeRoomCode(raw);
+  if (!room) {
+    socket && socket.emit('action_error', 'Invalid room code. Use 4-12 letters or numbers.');
+    return null;
+  }
+  return room;
+}
+
+function getSavePath(room) {
+  const safeRoom = normalizeRoomCode(room);
+  if (!safeRoom) throw new Error('Invalid room code');
+  const savePath = path.resolve(SAVES_DIR, `${safeRoom}.json`);
+  const savesRoot = `${path.resolve(SAVES_DIR)}${path.sep}`;
+  if (!savePath.startsWith(savesRoot)) throw new Error('Unsafe save path');
+  return savePath;
+}
+
+// ─── Atomic and recoverable saves ───────────────────────────────────────────
+function cloneForSave(game) {
+  return JSON.parse(JSON.stringify(game, (key, value) => {
+    if (key === 'testDiceQueue') return undefined;
+    return value;
+  }));
+}
+
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
 function saveGame(room, game) {
+  const savePath = getSavePath(room);
+  const tempPath = `${savePath}.tmp`;
+  const backupPath = `${savePath}.bak`;
+  // Validate before saving
+  const { valid, errors } = validateGame(game);
+  if (!valid) {
+    if (process.env.NODE_ENV === 'test') throw new Error(`Invalid game state: ${errors.join('; ')}`);
+    console.warn('[PERSIST] Refusing to save invalid state:', errors.join('; '));
+    return;
+  }
   try {
-    const savePath = path.join(SAVES_DIR, `${room}.json`);
-    fs.writeFileSync(savePath, JSON.stringify(game), 'utf8');
-  } catch (e) {
-    console.warn('[PERSIST] Failed to save game:', e.message);
+    const payload = JSON.stringify(cloneForSave(game));
+    fs.writeFileSync(tempPath, payload, 'utf8');
+    if (fs.existsSync(savePath)) fs.copyFileSync(savePath, backupPath);
+    fs.renameSync(tempPath, savePath);
+  } catch (error) {
+    try { if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath); } catch {}
+    console.warn('[PERSIST] Failed to save game:', error.message);
   }
 }
 
 function loadGame(room) {
+  const savePath = getSavePath(room);
+  const backupPath = `${savePath}.bak`;
   try {
-    const savePath = path.join(SAVES_DIR, `${room}.json`);
-    if (fs.existsSync(savePath)) {
-      const data = JSON.parse(fs.readFileSync(savePath, 'utf8'));
-      console.log(`[PERSIST] Restored game for room ${room}`);
-      return data;
+    if (!fs.existsSync(savePath)) return null;
+    const loaded = migrateGame(readJsonFile(savePath));
+    console.log(`[PERSIST] Restored game for room ${room}`);
+    return loaded;
+  } catch (primaryError) {
+    console.warn('[PERSIST] Primary save invalid:', primaryError.message);
+    try {
+      if (!fs.existsSync(backupPath)) return null;
+      const recovered = migrateGame(readJsonFile(backupPath));
+      saveGame(room, recovered);
+      console.warn(`[PERSIST] Recovered ${room} from backup`);
+      return recovered;
+    } catch (backupError) {
+      console.warn('[PERSIST] Backup save invalid:', backupError.message);
+      return null;
     }
-  } catch (e) {
-    console.warn('[PERSIST] Failed to load save:', e.message);
   }
-  return null;
 }
 
 function deleteSave(room) {
-  try {
-    const savePath = path.join(SAVES_DIR, `${room}.json`);
-    if (fs.existsSync(savePath)) fs.unlinkSync(savePath);
-  } catch (e) { /* ignore */ }
+  const savePath = getSavePath(room);
+  for (const target of [savePath, `${savePath}.tmp`, `${savePath}.bak`]) {
+    try { if (fs.existsSync(target)) fs.unlinkSync(target); } catch {}
+  }
 }
 
 process.on('uncaughtException', (err) => {
@@ -53,7 +116,7 @@ const io = new Server(server, {
   cors: {
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
-      const isLocal = origin.startsWith('http://localhost:') || 
+      const isLocal = origin.startsWith('http://localhost:') ||
                       origin.startsWith('http://127.0.0.1:') ||
                       /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(origin);
       if (isLocal) {
@@ -67,8 +130,9 @@ const io = new Server(server, {
 
 const rooms = {};
 
-app.get('/api/rooms', (req, res) => {
-  res.json(rooms);
+// Replaces /api/rooms (which exposed private data). Returns only safe aggregate stats.
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, activeRooms: Object.keys(rooms).length });
 });
 
 function getRandomColor() {
@@ -174,11 +238,12 @@ function logEvent(game, message) {
 const saveTimers = {};
 
 function broadcastUpdate(room, game) {
-  io.to(room).emit('game_update', game);
+  io.to(room).emit('game_update', publicGameState(game));
   if (saveTimers[room]) clearTimeout(saveTimers[room]);
   saveTimers[room] = setTimeout(() => {
-    saveGame(room, game);
+    saveGame(room, game); // saves the full private game (hostKey etc.)
     delete saveTimers[room];
+
   }, 500);
 }
 
@@ -424,19 +489,60 @@ function finishBankruptcyDeclaration(game, room, player) {
 
 // FIX C/D: server-authoritative auction timer + single award path.
 const AUCTION_DURATION_MS = 30000;
+const TRADE_DURATION_MS = 60000;
 const auctionTimers = {};
+const tradeTimers = {};
 
 function clearAuctionTimer(room) {
   if (auctionTimers[room]) { clearTimeout(auctionTimers[room]); delete auctionTimers[room]; }
 }
 
-function startAuctionTimer(room) {
-  clearAuctionTimer(room);
-  auctionTimers[room] = setTimeout(() => {
-    const game = rooms[room];
-    if (game) endAuction(game, room);
-  }, AUCTION_DURATION_MS);
+function clearTradeTimer(room) {
+  if (tradeTimers[room]) { clearTimeout(tradeTimers[room]); delete tradeTimers[room]; }
 }
+
+function resumeAuctionTimer(room, game) {
+  clearAuctionTimer(room);
+  if (!game.auction?.status) return;
+  const remaining = Math.max(0, Number(game.auction.endsAt || 0) - Date.now());
+  if (remaining === 0) return endAuction(game, room);
+  auctionTimers[room] = setTimeout(() => {
+    const liveGame = rooms[room];
+    if (liveGame) endAuction(liveGame, room);
+  }, remaining);
+}
+
+function startAuctionTimer(room) {
+  const game = rooms[room];
+  if (!game) return;
+  game.auction.endsAt = Date.now() + AUCTION_DURATION_MS;
+  resumeAuctionTimer(room, game);
+}
+
+function expireTrade(room, game, tradeId) {
+  if (!game || !game.pendingTrade || game.pendingTrade.id !== tradeId) return;
+  if (game.pendingTrade.status !== 'pending') return;
+  clearTradeTimer(room);
+  game.pendingTrade.status = 'expired';
+  const initiator = game.players.find(p => p.id === game.pendingTrade.initiatorId);
+  const target = game.players.find(p => p.id === game.pendingTrade.targetId);
+  logEvent(game, `> Trade between ${initiator ? initiator.name : 'Player'} and ${target ? target.name : 'Player'} expired.`);
+  io.to(room).emit('trigger_visual', { type: 'TRADE_DECLINED', initiatorName: initiator ? initiator.name : 'Player', targetName: target ? target.name : 'Player' });
+  game.pendingTrade = null;
+  broadcastUpdate(room, game);
+}
+
+function resumeTradeTimer(room, game) {
+  clearTradeTimer(room);
+  if (!game.pendingTrade || game.pendingTrade.status !== 'pending') return;
+  const remaining = Math.max(0, game.pendingTrade.expiresAt - Date.now());
+  if (remaining === 0) return expireTrade(room, game, game.pendingTrade.id);
+  tradeTimers[room] = setTimeout(
+    () => expireTrade(room, rooms[room], game.pendingTrade.id),
+    remaining,
+  );
+}
+
 
 function endAuction(game, room) {
   const a = game.auction;
@@ -685,98 +791,114 @@ function drawAndResolveCard(game, room, player, deckType, roll) {
 }
 
 io.on('connection', (socket) => {
-  socket.on('create_room', (room) => {
-    socket.join(room);
-    const savedGame = loadGame(room);
-    if (savedGame) {
-      savedGame.players.forEach(p => {
-        p.connected = false;
-        p.jailCards = p.jailCards || [];
-        if (p.getOutOfJailCards > 0 && p.jailCards.length === 0) {
-          if (p.getOutOfJailCards === 1) p.jailCards.push('chance');
-          else if (p.getOutOfJailCards >= 2) p.jailCards.push('chance', 'chest');
-        }
-        p.getOutOfJailCards = p.jailCards.length;
-      });
-      savedGame.hostId = socket.id;
-      savedGame.gameStatus = savedGame.gameStatus || 'active';
-      savedGame.bankruptcyResolveQueue = savedGame.bankruptcyResolveQueue || [];
-      savedGame.bankruptcyAuctionQueue = savedGame.bankruptcyAuctionQueue || [];
-      savedGame.availableHouses = savedGame.availableHouses === undefined ? 32 : savedGame.availableHouses;
-      savedGame.availableHotels = savedGame.availableHotels === undefined ? 12 : savedGame.availableHotels;
-      
-      const filterDeck = (deck, type) => {
-        const heldByAny = savedGame.players.some(p => p.jailCards && p.jailCards.includes(type));
-        if (heldByAny && deck) {
-          return deck.filter(c => c.type !== 'jail_card');
-        }
-        return deck;
-      };
-      savedGame.chanceDeck = filterDeck(savedGame.chanceDeck, 'chance');
-      savedGame.chestDeck = filterDeck(savedGame.chestDeck, 'chest');
-      
-      if (savedGame.pendingBuy === undefined) savedGame.pendingBuy = null;
-      rooms[room] = savedGame;
-      console.log(`[PERSIST] Room ${room} restored from save with ${savedGame.players.length} players`);
-    } else {
-      rooms[room] = {
-        hostId: socket.id,
-        players: [],
-        gameStatus: 'lobby',
-        currentTurn: 0,
-        auction: { status: false, activePlayers: [] },
-        boardState: {},
-        logs: [],
-        landedTile: null,
-        pendingBuy: null,
-        chanceDeck: [],
-        chestDeck: [],
-        hasRolled: false,
-        bankruptcyResolveQueue: [],
-        bankruptcyAuctionQueue: [],
-        availableHouses: 32,
-        availableHotels: 12
-      };
-      rooms[room].chanceDeck = createDeck('chance', rooms[room]);
-      rooms[room].chestDeck = createDeck('chest', rooms[room]);
-    }
-  });
+  socket.on('create_room', (payload) => {
+    const rawRoom = payload && typeof payload === 'object' ? payload.room : payload;
+    const room = requireRoom(rawRoom, socket);
+    if (!room) return;
 
-  socket.on('join_game', ({ room, name, color, clientId }) => {
-    const game = rooms[room];
-    if (!game) { socket.emit('action_error', 'Room does not exist. Please launch the TV/Host first!'); return; }
-    let existingPlayer = null;
-    if (clientId) existingPlayer = game.players.find(p => p.clientId === clientId);
-    if (!existingPlayer && name) existingPlayer = game.players.find(p => p.name.toLowerCase() === name.trim().toLowerCase());
-    if (existingPlayer) {
-      const oldId = existingPlayer.id;
-      existingPlayer.id = socket.id;
-      existingPlayer.connected = true;
-      existingPlayer.jailCards = existingPlayer.jailCards || [];
-      existingPlayer.getOutOfJailCards = existingPlayer.jailCards.length;
-      if (clientId && !existingPlayer.clientId) existingPlayer.clientId = clientId;
-      for (const propId in game.boardState) {
-        if (game.boardState[propId].owner === oldId) game.boardState[propId].owner = socket.id;
+    const hostKey = payload && typeof payload === 'object' ? payload.hostKey : null;
+    if (!hostKey || typeof hostKey !== 'string') {
+      socket.emit('host_error', 'Missing host key. Please reload the host page.');
+      return;
+    }
+
+    // Room already live in memory
+    if (rooms[room]) {
+      const game = rooms[room];
+      if (game.hostKey !== hostKey) {
+        socket.emit('host_error', 'Room already has an active host.');
+        return;
       }
-      game.players.forEach(p => { if (p.creditorId === oldId) p.creditorId = socket.id; });
-      if (game.bankruptcyResolveQueue) game.bankruptcyResolveQueue.forEach(item => { if (item.creditorId === oldId) item.creditorId = socket.id; });
-      if (game.auction && game.auction.status) {
-        if (game.auction.highestBidder === oldId) game.auction.highestBidder = socket.id;
-        if (game.auction.activePlayers) game.auction.activePlayers = game.auction.activePlayers.map(id => id === oldId ? socket.id : id);
-      }
-      if (game.pendingBuy && game.pendingBuy.playerId === oldId) game.pendingBuy.playerId = socket.id;
+      // Same host reconnecting: update socket ID and set connected
+      game.hostId = socket.id;
+      game.hostConnected = true;
       socket.join(room);
-      logEvent(game, `> ${existingPlayer.name} reconnected.`);
+      resumeAuctionTimer(room, game);
+      resumeTradeTimer(room, game);
       broadcastUpdate(room, game);
       if (game.auction && game.auction.status) socket.emit('auction_start', game.auction);
       return;
     }
-    
+
+    // Try loading from disk
+    const savedGame = loadGame(room);
+    if (savedGame) {
+      // Old save without hostKey: first TV may claim it
+      if (!savedGame.hostKey) {
+        savedGame.hostKey = hostKey;
+        console.log(`[HOST] Room ${room} claimed by first TV (no prior hostKey)`);
+      } else if (savedGame.hostKey !== hostKey) {
+        socket.emit('host_error', 'Room already has an active host.');
+        return;
+      }
+      savedGame.hostId = socket.id;
+      savedGame.hostConnected = true;
+      savedGame.pendingTrade = savedGame.pendingTrade || null;
+      rooms[room] = savedGame;
+      socket.join(room);
+      console.log(`[PERSIST] Room ${room} restored from save with ${savedGame.players.length} players`);
+      resumeAuctionTimer(room, savedGame);
+      resumeTradeTimer(room, savedGame);
+      broadcastUpdate(room, savedGame);
+      if (savedGame.auction && savedGame.auction.status) socket.emit('auction_start', savedGame.auction);
+    } else {
+      const game = createInitialGame({ hostId: socket.id, hostKey });
+      rooms[room] = game;
+      socket.join(room);
+    }
+  });
+
+  socket.on('join_game', ({ room: rawRoom, name, color, clientId }) => {
+    const room = requireRoom(rawRoom, socket);
+    if (!room) return;
+    const game = rooms[room];
+    if (!game) { socket.emit('action_error', 'Room does not exist. Please launch the TV/Host first!'); return; }
+
+    // Reconnect: clientId must exactly match
+    if (clientId) {
+      const existingPlayer = game.players.find(p => p.clientId === clientId);
+      if (existingPlayer) {
+        const oldId = existingPlayer.id;
+        existingPlayer.id = socket.id;
+        existingPlayer.connected = true;
+        existingPlayer.jailCards = existingPlayer.jailCards || [];
+        existingPlayer.getOutOfJailCards = existingPlayer.jailCards.length;
+        for (const propId in game.boardState) {
+          if (game.boardState[propId].owner === oldId) game.boardState[propId].owner = socket.id;
+        }
+        game.players.forEach(p => { if (p.creditorId === oldId) p.creditorId = socket.id; });
+        if (game.bankruptcyResolveQueue) game.bankruptcyResolveQueue.forEach(item => { if (item.creditorId === oldId) item.creditorId = socket.id; });
+        if (game.auction && game.auction.status) {
+          if (game.auction.highestBidder === oldId) game.auction.highestBidder = socket.id;
+          if (game.auction.activePlayers) game.auction.activePlayers = game.auction.activePlayers.map(id => id === oldId ? socket.id : id);
+        }
+        if (game.pendingBuy && game.pendingBuy.playerId === oldId) game.pendingBuy.playerId = socket.id;
+        if (game.pendingTrade) {
+          if (game.pendingTrade.initiatorId === oldId) game.pendingTrade.initiatorId = socket.id;
+          if (game.pendingTrade.targetId === oldId) game.pendingTrade.targetId = socket.id;
+        }
+        socket.join(room);
+        logEvent(game, `> ${existingPlayer.name} reconnected.`);
+        broadcastUpdate(room, game);
+        if (game.auction && game.auction.status) socket.emit('auction_start', game.auction);
+        return;
+      }
+    }
+
+    // Name collision with different/missing clientId: reject
+    if (name) {
+      const nameTaken = game.players.find(p => p.name.trim().toLowerCase() === name.trim().toLowerCase());
+      if (nameTaken) {
+        socket.emit('action_error', 'That player name is already in use.');
+        return;
+      }
+    }
+
     if (game.gameStatus !== 'lobby') {
       socket.emit('action_error', 'Game has already started. New players cannot join.');
       return;
     }
-    
+
     let assignedColor = color;
     const takenColors = game.players.map(p => p.color);
     if (!assignedColor || takenColors.includes(assignedColor)) {
@@ -1075,7 +1197,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('initiate_trade', (payload) => {
-    const { room, targetId } = payload || {};
+    const { room: rawRoom, targetId } = payload || {};
+    const room = requireRoom(rawRoom, socket);
+    if (!room) return;
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
@@ -1084,6 +1208,21 @@ io.on('connection', (socket) => {
     if (!initiator || !target) return;
     const checked = validateTrade(game, initiator, target, payload);
     if (checked.error) { io.to(socket.id).emit('action_error', checked.error); return; }
+    const tradeId = crypto.randomUUID();
+    game.pendingTrade = {
+      id: tradeId,
+      status: 'pending',
+      initiatorId: initiator.id,
+      targetId: target.id,
+      offerCash: checked.oCash,
+      requestCash: checked.rCash,
+      offerPropertyIds: checked.oProps,
+      requestPropertyIds: checked.rProps,
+      offerJailCards: checked.oJail,
+      requestJailCards: checked.rJail,
+      expiresAt: Date.now() + TRADE_DURATION_MS
+    };
+    resumeTradeTimer(room, game);
     const offer = { initiatorId: initiator.id, initiatorName: initiator.name, offerCash: checked.oCash, requestCash: checked.rCash, offerPropertyIds: checked.oProps, requestPropertyIds: checked.rProps, offerJailCards: checked.oJail, requestJailCards: checked.rJail };
     logEvent(game, `> ${initiator.name} offered a trade to ${target.name}.`);
     io.to(targetId).emit('trade_offer', offer);
@@ -1091,7 +1230,9 @@ io.on('connection', (socket) => {
   });
 
   socket.on('accept_trade', (payload) => {
-    const { room, initiatorId } = payload || {};
+    const { room: rawRoom, initiatorId } = payload || {};
+    const room = requireRoom(rawRoom, socket);
+    if (!room) return;
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
@@ -1101,16 +1242,19 @@ io.on('connection', (socket) => {
     const checked = validateTrade(game, initiator, target, payload);
     if (checked.error) { io.to(socket.id).emit('action_error', `Trade failed: ${checked.error}`); io.to(initiatorId).emit('action_error', `Trade failed: ${checked.error}`); return; }
     const { oProps, rProps, oCash, rCash, oJail, rJail } = checked;
-    
+    // Clear pending trade and timer before executing
+    clearTradeTimer(room);
+    game.pendingTrade = null;
+
     if (oCash > rCash) {
       chargePlayer(game, room, initiator, oCash - rCash, target.id);
     } else if (rCash > oCash) {
       chargePlayer(game, room, target, rCash - oCash, initiator.id);
     }
-    
+
     oProps.forEach(id => { initiator.properties = initiator.properties.filter(pid => pid !== id); target.properties.push(id); game.boardState[id].owner = target.id; });
     rProps.forEach(id => { target.properties = target.properties.filter(pid => pid !== id); initiator.properties.push(id); game.boardState[id].owner = initiator.id; });
-    
+
     initiator.jailCards = initiator.jailCards || [];
     target.jailCards = target.jailCards || [];
     for (let i = 0; i < oJail; i++) {
@@ -1123,7 +1267,7 @@ io.on('connection', (socket) => {
     }
     initiator.getOutOfJailCards = initiator.jailCards.length;
     target.getOutOfJailCards = target.jailCards.length;
-    
+
     const chargeMortgageInterest = (receiver, propIds) => { propIds.forEach(id => { if (game.boardState[id]?.mortgaged) { const fee = Math.floor((CITIES[id].price / 2) * 0.1); chargePlayer(game, room, receiver, fee, null); } }); };
     chargeMortgageInterest(target, oProps);
     chargeMortgageInterest(initiator, rProps);
@@ -1134,14 +1278,19 @@ io.on('connection', (socket) => {
     checkBankruptcy(game, room, initiator.id);
   });
 
-  socket.on('decline_trade', ({ room, initiatorId }) => {
+  socket.on('decline_trade', ({ room: rawRoom, initiatorId }) => {
+    const room = requireRoom(rawRoom, socket);
+    if (!room) return;
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const target = game.players.find(p => p.id === socket.id);
     const initiator = game.players.find(p => p.id === initiatorId);
+    clearTradeTimer(room);
+    game.pendingTrade = null;
     logEvent(game, `> ${target ? target.name : 'Player'} declined the trade.`);
     io.to(room).emit('trigger_visual', { type: 'TRADE_DECLINED', initiatorName: initiator ? initiator.name : "Player", targetName: target ? target.name : "Player" });
+    broadcastUpdate(room, game);
   });
 
   socket.on('start_game', ({ room }) => {
@@ -1222,14 +1371,21 @@ io.on('connection', (socket) => {
     broadcastUpdate(room, game);
   });
 
-  socket.on('join_room', (room) => {
+  socket.on('join_room', (rawRoom) => {
+    const room = requireRoom(rawRoom, socket);
+    if (!room) return;
     socket.join(room);
-    if (rooms[room]) socket.emit('game_update', rooms[room]);
+    if (rooms[room]) socket.emit('game_update', publicGameState(rooms[room]));
   });
 
   socket.on('disconnect', () => {
     for (const room in rooms) {
       const game = rooms[room];
+      // Host disconnect: mark not connected but do NOT delete room
+      if (game.hostId === socket.id) {
+        game.hostConnected = false;
+        broadcastUpdate(room, game);
+      }
       const player = game.players.find(p => p.id === socket.id);
       if (player) {
         player.connected = false;
@@ -1257,4 +1413,4 @@ io.on('connection', (socket) => {
 if (require.main === module) {
   server.listen(process.env.PORT || 3001, () => console.log("Game Engine Running on port " + (process.env.PORT || 3001)));
 }
-module.exports = { app, server, io, rooms, chanceDeckMaster, chestDeckMaster, rollDie, determineStartingPlayer, chargePlayer, gainCash, calculateAssets, checkBankruptcy, declareBankruptcy, endAuction, validateTrade, createDeck, movePlayerTo, executeCardAction, drawAndResolveCard };
+module.exports = { app, server, io, rooms, chanceDeckMaster, chestDeckMaster, rollDie, determineStartingPlayer, chargePlayer, gainCash, calculateAssets, checkBankruptcy, declareBankruptcy, endAuction, validateTrade, createDeck, movePlayerTo, executeCardAction, drawAndResolveCard, normalizeRoomCode, requireRoom, getSavePath, saveGame, loadGame, deleteSave, resumeAuctionTimer, resumeTradeTimer, expireTrade, AUCTION_DURATION_MS, TRADE_DURATION_MS };

@@ -391,7 +391,7 @@ function BankruptcyResolveScreen({ socket, gameState, me, room = 'ABCD', activeR
 function getOrCreateClientId() {
   let clientId = localStorage.getItem('monopoly_client_id');
   if (!clientId) {
-    clientId = 'c_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+    clientId = window.crypto.randomUUID();
     localStorage.setItem('monopoly_client_id', clientId);
   }
   return clientId;

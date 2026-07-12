@@ -582,6 +582,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   // so manage_property game_updates don't re-trigger the popup for the same landing.
   const dismissedLandedTileKeyRef = useRef(null);
   const [activeVisualEvent, setActiveVisualEvent] = useState(null);
+  const [hostErrorMsg, setHostErrorMsg] = useState(null);
 
   const [isAudioMuted, setIsAudioMuted] = useState(true);
   const bgmVolume = 0.25;
@@ -688,7 +689,17 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   }, []);
 
   useEffect(() => {
-    socket.emit("create_room", room);
+    function getHostKey(roomCode) {
+      const storageKey = `monopoly_host_key_${roomCode}`;
+      let key = localStorage.getItem(storageKey);
+      if (!key) {
+        key = (window.crypto || crypto).randomUUID();
+        localStorage.setItem(storageKey, key);
+      }
+      return key;
+    }
+    const hostKey = getHostKey(room);
+    socket.emit("create_room", { room, hostKey });
 
     const onGameUpdate = (data) => setGameState(data);
 
@@ -758,11 +769,16 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       }
     };
 
+    const onHostError = (msg) => {
+      setHostErrorMsg(msg || 'Host error. Another TV may already be controlling this room.');
+    };
+
     socket.on("game_update", onGameUpdate);
     socket.on("auction_start", onAuctionStart);
     socket.on("auction_update", onAuctionUpdate);
     socket.on("auction_end", onAuctionEnd);
     socket.on("trigger_visual", onTriggerVisual);
+    socket.on("host_error", onHostError);
 
     return () => {
       socket.off("game_update", onGameUpdate);
@@ -770,6 +786,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       socket.off("auction_update", onAuctionUpdate);
       socket.off("auction_end", onAuctionEnd);
       socket.off("trigger_visual", onTriggerVisual);
+      socket.off("host_error", onHostError);
     };
   }, [socket, room]);
 
@@ -1155,6 +1172,19 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
           font-size: 1.48vh !important;
         }
       `}</style>
+
+      {/* Host Error Panel — shown when another TV already owns this room */}
+      {hostErrorMsg && (
+        <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-zinc-950/98 backdrop-blur-md">
+          <div className="flex flex-col items-center gap-6 max-w-lg text-center px-8">
+            <div className="text-6xl">⚠️</div>
+            <h1 className="text-3xl font-bold text-red-400">Host Access Denied</h1>
+            <p className="text-zinc-300 text-lg">{hostErrorMsg}</p>
+            <p className="text-zinc-500 text-sm">If you are the correct host, clear your browser storage and reload.</p>
+          </div>
+        </div>
+      )}
+
       <VisualEvents activeEvent={activeVisualEvent} setActiveEvent={setActiveVisualEvent} socket={socket} boardState={gameState.boardState} players={gameState.players} />
       <AuctionDisplay auctionState={auctionState} allPlayers={gameState.players} />
 

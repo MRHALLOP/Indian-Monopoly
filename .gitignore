@@ -1,1 +1,14 @@
 node_modules/
+client/node_modules/
+server/node_modules/
+client/dist/
+client/test-screenshots/
+server/game_saves/*.json
+server/game_saves/*.json.tmp
+server/game_saves/*.json.bak
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
