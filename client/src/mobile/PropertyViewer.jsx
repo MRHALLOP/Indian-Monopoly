@@ -29,8 +29,7 @@ const COLOR_LABELS = {
   'bg-blue-800': { name: 'Dark Blue', hex: '#1e40af' },
 };
 
-// Circled number characters for house counts
-const CIRCLED_NUMBERS = ['', '①', '②', '③', '④'];
+
 
 // Small inline house icon (green square)
 function HouseIcon() {
@@ -103,10 +102,7 @@ function PropertyCard({ property, colorHex, isExpanded, onToggle }) {
   const rent = property.rent;
   const baseRent = rent[0];
 
-  // All rows in the rent table section, with alternating backgrounds
-  // Row index tracker for alternating bg (starts after Purchase Price & Mortgage rows)
-  let rowIdx = 0;
-  const altBg = () => (rowIdx++ % 2 === 0 ? '#fff' : '#f6f3f2');
+
 
   return (
     <div className="mb-2">

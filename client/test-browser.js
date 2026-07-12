@@ -15,10 +15,11 @@
 import puppeteer from 'puppeteer';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import assert from 'assert';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.join(__dirname, 'test-screenshots');
+fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 const BASE_URL = 'http://localhost:5173';
 
 async function takeScreenshot(page, name) {
@@ -330,6 +331,141 @@ async function completeTurn(page, name) {
     pass('Turn cycle completed successfully');
     await takeScreenshot(hostPage, '003_host_first_buy');
 
+    // ═══════════════════════════════════════════════════
+    // TEST 8: Viewport Overflow & Trade Layout Safety
+    // ═══════════════════════════════════════════════════
+    console.log('\n📋 TEST 8: Viewport Overflow & Trade Layout Safety');
+
+    // Trigger trade offer with 6 properties on the host to simulate overflow condition
+    console.log('  Triggering complex trade offer on Host...');
+    await hostPage.evaluate(() => {
+      if (window.__testTriggerVisual) {
+        window.__testTriggerVisual({
+          type: 'TRADE_OFFER',
+          initiatorName: 'AaravWithAVeryLongNameIndeed',
+          targetName: 'DiyaWithAVeryLongNameIndeed',
+          offerCash: 1500,
+          offerJailCards: 2,
+          offerPropertyIds: [1, 3, 5, 6, 8, 9], // 6 properties
+          requestCash: 500,
+          requestJailCards: 0,
+          requestPropertyIds: [11, 12, 13, 14, 15] // 5 properties
+        });
+      }
+    });
+    await sleep(1000);
+
+    const viewports = [
+      { width: 1280, height: 720 },
+      { width: 1366, height: 768 },
+      { width: 1920, height: 1080 }
+    ];
+
+    for (const vp of viewports) {
+      console.log(`  Evaluating viewport ${vp.width}x${vp.height}...`);
+      await hostPage.setViewport(vp);
+      await sleep(1000);
+
+      // Check element bounding boxes relative to the viewport — not document scroll size.
+      // This catches elements that overflow the visual boundary even when the page clips them.
+      const boundCheck = await hostPage.evaluate(() => {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        // Look strictly for the trade overlay container
+        const overlay = document.querySelector('[data-testid="trade-overlay"]');
+        if (!overlay) {
+          return { error: 'Trade overlay element not found on screen', violations: [], vw, vh };
+        }
+
+        // Walk every visible element inside the overlay and find any that sticks outside the viewport
+        const allEls = Array.from(overlay.querySelectorAll('*'));
+        const violations = [];
+        for (const el of allEls) {
+          const r = el.getBoundingClientRect();
+          // Skip invisible / zero-size elements
+          if (r.width === 0 && r.height === 0) continue;
+          if (r.right > vw + 2 || r.bottom > vh + 2 || r.left < -2 || r.top < -2) {
+            violations.push({
+              tag: el.tagName,
+              className: el.className.slice(0, 60),
+              right: Math.round(r.right),
+              bottom: Math.round(r.bottom),
+              left: Math.round(r.left),
+              top: Math.round(r.top),
+              vw,
+              vh,
+            });
+          }
+        }
+        return { violations: violations.slice(0, 5), vw, vh }; // cap at 5 for readability
+      });
+
+      if (boundCheck.error) {
+        fail(`Viewport overflow check at ${vp.width}x${vp.height}`, boundCheck.error);
+      } else if (boundCheck.violations.length === 0) {
+        pass(`No element bounding-box overflow at viewport ${vp.width}x${vp.height}`);
+      } else {
+        const first = boundCheck.violations[0];
+        fail(
+          `Element bounding-box overflow at viewport ${vp.width}x${vp.height}`,
+          `${boundCheck.violations.length} violation(s); first: <${first.tag}> ` +
+          `right=${first.right} bottom=${first.bottom} vw=${first.vw} vh=${first.vh}`
+        );
+      }
+
+      await takeScreenshot(hostPage, `viewport_${vp.width}x${vp.height}_trade_overflow`);
+    }
+
+    // Restore standard host page viewport
+    await hostPage.setViewport({ width: 1400, height: 900 });
+
+    // ═══════════════════════════════════════════════════
+    // TEST 9: Production Build — globals must be absent
+    // ═══════════════════════════════════════════════════
+    console.log('\n📋 TEST 9: Production Build — test globals absent');
+
+    // Spin up vite preview (production static server) on port 4173
+    const { exec } = await import('child_process');
+    const preview = exec('npx vite preview --port 4173 --strictPort', {
+      cwd: path.join(__dirname),
+    });
+    await sleep(3000); // wait for preview server to be ready
+
+    let prodPage;
+    try {
+      prodPage = await browser.newPage();
+      await prodPage.goto('http://localhost:4173', { waitUntil: 'networkidle0', timeout: 15000 });
+      await sleep(1000);
+
+      const prodGlobals = await prodPage.evaluate(() => ({
+        hasTriggerVisual: typeof window.__testTriggerVisual !== 'undefined',
+        hasTestSocket:    typeof window.__testSocket !== 'undefined',
+        hasWindowSocket:  typeof window.socket !== 'undefined',
+      }));
+
+      if (!prodGlobals.hasTriggerVisual) {
+        pass('window.__testTriggerVisual is absent from production build');
+      } else {
+        fail('window.__testTriggerVisual PRESENT in production build — must be gated behind import.meta.env.DEV');
+      }
+
+      if (!prodGlobals.hasTestSocket) {
+        pass('window.__testSocket is absent from production build');
+      } else {
+        fail('window.__testSocket PRESENT in production build — must be gated behind import.meta.env.DEV');
+      }
+
+      if (!prodGlobals.hasWindowSocket) {
+        pass('window.socket is absent from production build');
+      } else {
+        fail('window.socket PRESENT in production build — must be gated behind import.meta.env.DEV');
+      }
+    } finally {
+      if (prodPage) await prodPage.close();
+      // Terminate the preview server
+      preview.kill();
+    }
+
   } catch (error) {
     console.error('\n💥 UNEXPECTED E2E TEST ERROR:', error.message);
     testsFailed++;
@@ -337,7 +473,9 @@ async function completeTurn(page, name) {
       if (hostPage) await takeScreenshot(hostPage, 'ERROR_host');
       if (player1Page) await takeScreenshot(player1Page, 'ERROR_player1');
       if (player2Page) await takeScreenshot(player2Page, 'ERROR_player2');
-    } catch (e) {}
+    } catch (screenshotErr) {
+      console.warn('  Screenshot failed during error handling:', screenshotErr.message);
+    }
   } finally {
     console.log('\n═══════════════════════════════════════════════════');
     console.log(`   E2E RESULTS: ${testsPassed} PASSED | ${testsFailed} FAILED`);

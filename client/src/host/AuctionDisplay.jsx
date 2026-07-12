@@ -582,7 +582,10 @@ export default function AuctionDisplay({ auctionState, allPlayers }) {
   const colorHex  = getColorHex(city.color);
   const isEnded   = auctionState.status === 'ended';
 
-  const getPlayerName = (id) => allPlayers.find(p => p.id === id)?.name || '—';
+  const getPlayerName = (id) => {
+    const name = allPlayers.find(p => p.id === id)?.name || '—';
+    return name.length > 12 ? name.slice(0, 12) + '...' : name;
+  };
 
   const rankedPlayers = [...allPlayers].sort((a, b) => {
     const aW = auctionState.highestBidder === a.id ? -2 : 0;
@@ -700,8 +703,8 @@ export default function AuctionDisplay({ auctionState, allPlayers }) {
                   fontSize: '3rem', fontWeight: 1000,
                   fontFamily: "'Plus Jakarta Sans', sans-serif",
                   textShadow: `0 0 35px ${auctionState.winnerColor || '#fbbf24'}aa`,
-                }}>
-                  {auctionState.winner}
+                }} title={auctionState.winner}>
+                  {auctionState.winner && auctionState.winner.length > 12 ? auctionState.winner.slice(0, 12) + '...' : auctionState.winner}
                 </p>
               </div>
 
@@ -909,7 +912,7 @@ export default function AuctionDisplay({ auctionState, allPlayers }) {
                       <p style={{ color: 'rgba(251,191,36,0.65)', fontSize: 12, fontWeight: 900, letterSpacing: '0.4em', textTransform: 'uppercase', marginBottom: 4 }}>
                         HIGHEST BIDDER
                       </p>
-                      <p style={{ color: '#fbbf24', fontSize: '2rem', fontWeight: 1000, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                      <p style={{ color: '#fbbf24', fontSize: '2rem', fontWeight: 1000, fontFamily: "'Plus Jakarta Sans', sans-serif" }} title={allPlayers.find(p => p.id === auctionState.highestBidder)?.name || ''}>
                         {getPlayerName(auctionState.highestBidder)}
                       </p>
                     </div>
@@ -1030,8 +1033,8 @@ export default function AuctionDisplay({ auctionState, allPlayers }) {
                           textDecoration: isFolded ? 'line-through' : 'none',
                           fontFamily: "'Plus Jakarta Sans', sans-serif",
                           marginBottom: 4,
-                        }} className="truncate">
-                          {player.name}
+                        }} className="truncate" title={player.name}>
+                          {player.name && player.name.length > 12 ? player.name.slice(0, 12) + '...' : player.name}
                         </p>
                         <div className="flex items-center gap-2">
                           <span style={{

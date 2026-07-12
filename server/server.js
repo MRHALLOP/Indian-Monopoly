@@ -523,6 +523,11 @@ function movePlayerTo(game, room, player, targetPos, collectGo = true, specialRu
       player.position = 10; player.inJail = true; player.jailTurns = 0; player.consecutiveDoubles = 0; game.hasRolled = true;
       game.landedTile.context = 'jail';
       logEvent(game, `> ${player.name} was sent to Jail.`);
+      io.to(room).emit('trigger_visual', {
+        type: 'JAIL',
+        player: player.name,
+        reason: 'go_to_jail'
+      });
     } else if (tile.id === 20) {
       logEvent(game, `> ${player.name} landed on Free Parking.`);
     } else if (tile.type === 'tax') {
@@ -589,6 +594,11 @@ function executeCardAction(game, room, player, card, roll) {
     player.consecutiveDoubles = 0;
     game.hasRolled = true;
     logEvent(game, `> ${player.name} went to Jail.`);
+    io.to(room).emit('trigger_visual', {
+      type: 'JAIL',
+      player: player.name,
+      reason: 'card'
+    });
   } else if (card.type === 'advance_go') {
     movePlayerTo(game, room, player, 0, true);
   } else if (card.type === 'jail_card') {
@@ -825,6 +835,11 @@ io.on('connection', (socket) => {
         if (player.consecutiveDoubles === 3) {
           player.inJail = true; player.position = 10; player.consecutiveDoubles = 0; game.hasRolled = true;
           logEvent(game, `> ${player.name} rolled 3 doubles! Go to Jail!`);
+          io.to(room).emit('trigger_visual', {
+            type: 'JAIL',
+            player: player.name,
+            reason: 'three_doubles'
+          });
           return broadcastUpdate(room, game);
         }
       } else {

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { FaMotorcycle, FaTrain, FaBus, FaTractor, FaCrown, FaPlane, FaCarSide } from 'react-icons/fa';
 
 export const TOKEN_ICONS = {
