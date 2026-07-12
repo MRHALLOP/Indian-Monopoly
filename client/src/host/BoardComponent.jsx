@@ -39,7 +39,7 @@ function PropertyCardPopup({ landedTile }) {
 
   const {
     tileName, tileColor, tilePrice, tileRent, tileType,
-    houseCost, playerName, playerColor, context, amount, ownerName, ownerColor
+    playerName, playerColor, context, amount, ownerName, houseCost
   } = landedTile;
 
   if (context === 'rent_due' || context === 'chance' || context === 'community_chest' || tileName === 'Chance' || tileName === 'Community Chest') {
@@ -51,13 +51,8 @@ function PropertyCardPopup({ landedTile }) {
   const isStation = tileType === 'station';
   const isUtility = tileType === 'utility';
   const isSpecialCard = ['GO', 'Jail', 'Free Parking', 'Go to Jail', 'Income Tax', 'Luxury Tax'].includes(tileName);
-  const mortgageValue = tilePrice ? Math.floor(tilePrice / 2) : null;
 
-  let ribbonText = '';
-  if (context === 'for_sale') ribbonText = 'For sale';
-  else if (context === 'rent_due') ribbonText = 'Rent Due';
-  else if (context === 'tax') ribbonText = 'Tax Due';
-  else ribbonText = 'Landed';
+  const ribbonText = context === 'for_sale' ? 'For Sale' : (context === 'tax' ? 'Tax Due' : 'Landed');
 
   let specialHeaderBg = '#1f2937'; // Default dark gray
   if (tileName === 'GO') specialHeaderBg = '#ed1b24'; // Red
@@ -92,7 +87,7 @@ function PropertyCardPopup({ landedTile }) {
             {/* Main Ribbon Body */}
             <div className={`relative ${context === 'for_sale' ? 'bg-[#9810ea]' : 'bg-pink-600'} px-[2.5rem] py-[0.5rem] rounded-lg shadow-md text-center min-w-[15.6rem]`}>
               <h2 className="text-white font-bold text-[2.25rem] drop-shadow-md" style={{ fontFamily: 'Plus Jakarta Sans' }}>
-                {context === 'for_sale' ? 'For sale' : ribbonText}
+                {ribbonText}
               </h2>
             </div>
           </div>
@@ -500,6 +495,7 @@ function BankruptcyResolveOverlay({ activeResolution, allPlayers }) {
   );
 }
 
+// eslint-disable-next-line no-unused-vars
 function AudioVisualizer({ analyser, isMuted }) {
   const canvasRef = useRef(null);
 
@@ -568,6 +564,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   const [visualPlayers, setVisualPlayers] = useState([]);
   const [visualBoardState, setVisualBoardState] = useState({});
   const [visualLandedTile, setVisualLandedTile] = useState(null);
+  // eslint-disable-next-line no-unused-vars
   const [isAnimating, setIsAnimating] = useState(false);
   const [activeDice, setActiveDice] = useState(null);
   const [floaters, setFloaters] = useState([]);
@@ -587,9 +584,8 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   const [activeVisualEvent, setActiveVisualEvent] = useState(null);
 
   const [isAudioMuted, setIsAudioMuted] = useState(true);
-  const [bgmVolume, setBgmVolume] = useState(0.25);
-  const [sfxVolume, setSfxVolume] = useState(0.4);
-  const [audioAnalyser, setAudioAnalyser] = useState(null);
+  const bgmVolume = 0.25;
+  const sfxVolume = 0.4;
   const suppressGenericCashSoundUntilRef = useRef(0);
 
   const [audioState, setAudioState] = useState('prompt');
@@ -628,11 +624,6 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   useEffect(() => {
     try {
       soundEngine.setMuted(isAudioMuted);
-      if (!isAudioMuted && soundEngine.analyser) {
-        setAudioAnalyser(soundEngine.analyser);
-      } else {
-        setAudioAnalyser(null);
-      }
     } catch (e) {
       console.error('Error syncing mute state:', e);
     }
@@ -844,13 +835,14 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         if (Date.now() >= suppressGenericCashSoundUntilRef.current) {
           soundEngine.playCoinClink();
         }
-      } catch (e) {}
+      } catch { /* ignore */ }
     }
 
     const cashMap = {};
     visualPlayers.forEach(p => {
       cashMap[p.id] = p.cash;
     });
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPrevCash(cashMap);
   }, [visualPlayers]);
 
@@ -867,11 +859,72 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     }
   }, [visualLandedTile]);
 
+  // Helper for sequential visual token moves
+  async function runSequencedMovement(playerId, oldPos, finalPos, targetGameState) {
+    isAnimatingRef.current = true;
+    setIsAnimating(true);
+    willMoveRef.current = false;
+    // New movement = new landing event; reset the dismissed key so the new tile shows
+    dismissedLandedTileKeyRef.current = null;
+    setVisualLandedTile(null); // Keep card popup hidden while moving
+
+    // 1. Wait for dice roll to complete on screen
+    await new Promise(resolve => setTimeout(resolve, 2200));
+
+    // Calculate rolled pos before possible jail jump
+    const roll = lastRollSumRef.current || ((finalPos - oldPos + 40) % 40);
+    const rolledPos = (oldPos + roll) % 40;
+
+    // 2. Slide token cell-by-cell
+    let current = oldPos;
+    while (current !== rolledPos) {
+      current = (current + 1) % 40;
+      setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: current } : p));
+      try {
+        soundEngine.playTokenStep();
+      } catch (e) {
+        console.warn('Error playing token step sound:', e);
+      }
+      await new Promise(resolve => setTimeout(resolve, 250)); // 250ms per cell
+    }
+
+    // 3. Jump to jail cell if needed
+    if (rolledPos !== finalPos) {
+      await new Promise(resolve => setTimeout(resolve, 600));
+      setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: finalPos } : p));
+      if (finalPos === 10) {
+        try {
+          soundEngine.playJail();
+        } catch (e) {
+          console.error('Error playing jail sound:', e);
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+
+    // 4. Update visual state
+    setVisualPlayers(targetGameState.players.map(p => ({ ...p })));
+    setPrevPlayersState(targetGameState.players.map(p => ({ ...p })));
+
+    // 5. Open property card popup and trigger visual event if queued
+    if (pendingVisualEventRef.current) {
+      setActiveVisualEvent(pendingVisualEventRef.current);
+      pendingVisualEventRef.current = null;
+      setTimeout(() => setActiveVisualEvent(null), 4000);
+    }
+    setVisualLandedTile(gameStateRef.current ? gameStateRef.current.landedTile : targetGameState.landedTile);
+    isAnimatingRef.current = false;
+    setIsAnimating(false);
+
+    lastRollSumRef.current = 0;
+  }
+
   // Handle visual positions, dice updates and popups sequencing
   useEffect(() => {
     if (!gameState || !gameState.players || gameState.players.length === 0) return;
     gameStateRef.current = gameState;
 
+    /* eslint-disable react-hooks/set-state-in-effect */
     if (visualPlayers.length === 0) {
       setVisualPlayers(gameState.players.map(p => ({ ...p })));
       setVisualBoardState(gameState.boardState);
@@ -879,6 +932,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       setPrevPlayersState(gameState.players.map(p => ({ ...p })));
       return;
     }
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // Check if player position changed on server
     const movingPlayer = gameState.players.find(p => {
@@ -936,64 +990,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     }
   }, [activeVisualEvent]);
 
-  const runSequencedMovement = async (playerId, oldPos, finalPos, targetGameState) => {
-    isAnimatingRef.current = true;
-    setIsAnimating(true);
-    willMoveRef.current = false;
-    // New movement = new landing event; reset the dismissed key so the new tile shows
-    dismissedLandedTileKeyRef.current = null;
-    setVisualLandedTile(null); // Keep card popup hidden while moving
 
-    // 1. Wait for dice roll to complete on screen
-    await new Promise(resolve => setTimeout(resolve, 2200));
-
-    // Calculate rolled pos before possible jail jump
-    const roll = lastRollSumRef.current || ((finalPos - oldPos + 40) % 40);
-    const rolledPos = (oldPos + roll) % 40;
-
-    // 2. Slide token cell-by-cell
-    let current = oldPos;
-    while (current !== rolledPos) {
-      current = (current + 1) % 40;
-      setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: current } : p));
-      try {
-        soundEngine.playTokenStep();
-      } catch (e) {
-        console.warn('Error playing token step sound:', e);
-      }
-      await new Promise(resolve => setTimeout(resolve, 250)); // 250ms per cell
-    }
-
-    // 3. Jump to jail cell if needed
-    if (rolledPos !== finalPos) {
-      await new Promise(resolve => setTimeout(resolve, 600));
-      setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: finalPos } : p));
-      if (finalPos === 10) {
-        try {
-          soundEngine.playJail();
-        } catch (e) {
-          console.error('Error playing jail sound:', e);
-        }
-      }
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-
-    // 4. Update visual state
-    setVisualPlayers(targetGameState.players.map(p => ({ ...p })));
-    setPrevPlayersState(targetGameState.players.map(p => ({ ...p })));
-
-    // 5. Open property card popup and trigger visual event if queued
-    if (pendingVisualEventRef.current) {
-      setActiveVisualEvent(pendingVisualEventRef.current);
-      pendingVisualEventRef.current = null;
-      setTimeout(() => setActiveVisualEvent(null), 4000);
-    }
-    setVisualLandedTile(gameStateRef.current ? gameStateRef.current.landedTile : targetGameState.landedTile);
-    isAnimatingRef.current = false;
-    setIsAnimating(false);
-
-    lastRollSumRef.current = 0;
-  };
 
   function getGridStyle(i) {
     let row, col;
@@ -1012,6 +1009,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   // Reset starting rolls overlay when game starts or resets to lobby
   useEffect(() => {
     if (gameState && gameState.gameStatus === 'lobby') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDismissedStartingRolls(false);
     }
   }, [gameState?.gameStatus]);

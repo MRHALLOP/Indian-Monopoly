@@ -37,21 +37,17 @@ function makeRoomCode() {
 }
 
 function App() {
-  const [mode, setMode] = useState(null);
-  const [isConnected, setIsConnected] = useState(true);
+  const [mode] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('mode') === 'host') return 'host';
+    if (params.get('mode') === 'client') return 'client';
+    return window.innerWidth < 768 ? 'client' : null;
+  });
+  const [isConnected, setIsConnected] = useState(() => socket.connected);
   const params = new URLSearchParams(window.location.search);
   const room = params.get('room') || 'ABCD';
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('mode') === 'host') {
-      setMode('host');
-    } else if (params.get('mode') === 'client') {
-      setMode('client');
-    } else {
-      // Auto-detect mobile
-      if (window.innerWidth < 768) setMode('client');
-    }
 
     const onConnect = () => setIsConnected(true);
     const onDisconnect = () => setIsConnected(false);
@@ -60,9 +56,6 @@ function App() {
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
     socket.on('connect_error', onConnectError);
-
-    // Initial sync
-    setIsConnected(socket.connected);
 
     return () => {
       socket.off('connect', onConnect);

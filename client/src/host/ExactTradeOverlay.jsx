@@ -129,7 +129,6 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
   const stateColor = accepted ? 'var(--success)' : declined ? 'var(--danger)' : 'var(--left)';
   const heading = accepted ? 'DEAL COMPLETED' : declined ? 'DEAL REJECTED' : 'DEAL ON THE TABLE';
   const eyebrow = accepted ? 'Deal finalized' : declined ? 'Deal declined' : 'Incoming offer';
-  const stamp = accepted ? 'DEAL COMPLETED!' : declined ? 'DEAL REJECTED' : `Needs your call, ${activeTrade.targetName}`;
 
   const offererInitial = shouldReduceMotion ? { opacity: 0 } : { x: '-6cqw', opacity: 0, rotate: -1.2 };
   const offererAnimate = shouldReduceMotion ? { opacity: 1 } : { x: 0, opacity: 1, rotate: -1.2 };
@@ -146,6 +145,7 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
   return (
     <motion.div
       className="exact-trade-overlay"
+      data-testid="trade-overlay"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -179,7 +179,7 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
           container-type: inline-size;
           position: relative;
           isolation: isolate;
-          width: min(100vw, 177.7778vh);
+          width: min(96vw, 170.6667vh);
           aspect-ratio: 16 / 9;
           overflow: hidden;
           display: grid;

@@ -629,7 +629,84 @@ describe('Indian Monopoly Unit Tests', () => {
   });
 
   // ------------------------------------------------------------------
-  // 9. Trade overflow test with cash, jail card, and 6 long property names
+  // 9. Two-component shared socket: unmount one, other still reacts
+  // ------------------------------------------------------------------
+  test('second VisualEvents listener survives after first component unmounts', async () => {
+    // Build a real multi-listener socket mock that tracks per-callback subscriptions
+    const listeners = {};
+    const mockSocket = {
+      on: vi.fn((event, cb) => {
+        if (!listeners[event]) listeners[event] = [];
+        listeners[event].push(cb);
+      }),
+      off: vi.fn((event, cb) => {
+        if (listeners[event]) {
+          listeners[event] = listeners[event].filter(l => l !== cb);
+        }
+      }),
+      emit: vi.fn(),
+    };
+
+    const sharedPlayers = [
+      { id: 'p1', name: 'Aarav', color: '#ef4444' },
+      { id: 'p2', name: 'Diya', color: '#3b82f6' },
+    ];
+
+    // Mount component A
+    const { unmount: unmountA } = render(
+      <VisualEvents
+        socket={mockSocket}
+        activeEvent={null}
+        setActiveEvent={vi.fn()}
+        boardState={{}}
+        players={sharedPlayers}
+      />
+    );
+
+    // Mount component B (same socket)
+    const { unmount: unmountB } = render(
+      <VisualEvents
+        socket={mockSocket}
+        activeEvent={null}
+        setActiveEvent={vi.fn()}
+        boardState={{}}
+        players={sharedPlayers}
+      />
+    );
+
+    // Both components registered their own trigger_visual listener
+    expect(listeners['trigger_visual']?.length).toBe(2);
+
+    // Unmount component A — its listener must be removed via socket.off cleanup
+    unmountA();
+
+    // Exactly one listener should remain (component B's)
+    expect(listeners['trigger_visual']?.length).toBe(1);
+
+    // Clear any audio calls from mounting
+    soundEngine.playTradeProposed.mockClear();
+
+    // Directly invoke the surviving listener with a TRADE_OFFER event
+    await act(async () => {
+      listeners['trigger_visual'][0]({
+        type: 'TRADE_OFFER',
+        initiatorName: 'Aarav',
+        targetName: 'Diya',
+        offerCash: 100,
+        offerPropertyIds: [],
+        requestCash: 0,
+        requestPropertyIds: [],
+      });
+    });
+
+    // Component B's audio handler should have fired
+    expect(soundEngine.playTradeProposed).toHaveBeenCalledTimes(1);
+
+    unmountB();
+  });
+
+  // ------------------------------------------------------------------
+  // 10. Trade overflow test with cash, jail card, and 6 long property names
   // ------------------------------------------------------------------
   test('ExactTradeOverlay trade overflow test with cash, jail card, and 6 long property names', () => {
     const activeTrade = {
@@ -659,7 +736,7 @@ describe('Indian Monopoly Unit Tests', () => {
     // Verify that the title / subtitle clamping works and displays '+ N more'
     expect(container.innerHTML).toContain('+ 4 more'); // 6 properties: first 2 listed, + 4 more
     expect(container.innerHTML).toContain('+ 3 more'); // 5 properties: first 2 listed, + 3 more
-    
+
     // Check that player names are truncated or layout behaves correctly
     expect(container.innerHTML).toContain('AaravWithAVe...'); // aarav truncated to 12 chars
     expect(container.innerHTML).toContain('DiyaWithAVer...'); // diya truncated to 12 chars

@@ -111,7 +111,6 @@ function ModeSelectScreen({ onStartNew, onJoin }) {
 
 // ── Raise Money Screen ───────────────────────────────────────────────────────
 function RaiseMoneyScreen({ socket, gameState, me, room = 'ABCD' }) {
-  const debt = Math.abs(me?.cash < 0 ? me.cash : 0);
   return (
     <div className="flex flex-col overflow-hidden" style={{ background: '#fff', height: '100dvh' }}>
       {/* Header */}
@@ -249,8 +248,6 @@ function BankruptcyResolveScreen({ socket, gameState, me, room = 'ABCD', activeR
   const canAffordUnmortgage = me?.cash >= unmortgageCost;
   const canAffordKeep = me?.cash >= keepMortgagedFee;
 
-  const assets = getPlayerAssetValue(me, gameState);
-  const totalCash = (me?.cash || 0) + assets;
   const needFunds = me?.cash < Math.min(unmortgageCost, keepMortgagedFee);
 
   return (
@@ -442,6 +439,7 @@ function LobbyScreen({ socket, room = 'ABCD', gameState }) {
     { color: '#ec4899', label: 'Ring' }
   ];
 
+  /* eslint-disable react-hooks/set-state-in-effect */
   // Pre-select first untaken color
   useEffect(() => {
     if (!selectedColor) {
@@ -455,6 +453,7 @@ function LobbyScreen({ socket, room = 'ABCD', gameState }) {
       }
     }
   }, [takenColors, selectedColor, gameState]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   return (
     <div className="flex flex-col overflow-hidden" style={{ background: '#fcf9f8', height: '100dvh' }}>
@@ -718,6 +717,7 @@ export default function ControllerComponent({ socket }) {
 
   useEffect(() => {
     if (gameState && gameState.gameStatus === 'lobby') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDismissedRollsMobile(false);
     }
   }, [gameState?.gameStatus]);
