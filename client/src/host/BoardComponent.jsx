@@ -1060,28 +1060,18 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
             ))}
           </div>
           
-          {/* Start Button */}
-          <div className="flex justify-between items-center border-t border-zinc-800/80 pt-8">
-            <span className="text-sm text-zinc-400 font-sans font-medium">
+          {/* Status info (Start Game is controlled by Lobby Leader phone) */}
+          <div className="flex justify-between items-center border-t border-zinc-800/80 pt-8 font-sans">
+            <span className="text-sm text-zinc-400 font-medium">
               {gameState.players.length < 2 
                 ? "At least 2 players are required to start" 
                 : `${gameState.players.length} players connected`}
             </span>
-            <button
-              onClick={() => {
-                if (gameState.players.length >= 2) {
-                  socket.emit('start_game', { room });
-                }
-              }}
-              disabled={gameState.players.length < 2}
-              className={`px-10 py-4 rounded-2xl font-black uppercase tracking-wider text-sm transition-all shadow-lg font-sans ${
-                gameState.players.length < 2
-                  ? 'bg-zinc-850 text-zinc-650 border border-zinc-800 cursor-not-allowed'
-                  : 'bg-yellow-400 text-zinc-900 hover:bg-yellow-300 hover:scale-105 active:scale-95 shadow-[0_0_20px_rgba(250,204,21,0.2)] cursor-pointer'
-              }`}
-            >
-              Start Game
-            </button>
+            <span className="text-sm text-zinc-500 font-semibold italic">
+              {gameState.players.length >= 2
+                ? `Lobby Leader (${gameState.players[0].name}) can start the game from their phone`
+                : "Waiting for leader..."}
+            </span>
           </div>
         </motion.div>
       </div>

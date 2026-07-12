@@ -1133,7 +1133,7 @@ io.on('connection', (socket) => {
     const game = rooms[room];
     if (!game) return;
     const isLobbyLeader = game.players[0] && game.players[0].id === socket.id;
-    if (game.hostId !== socket.id && !isLobbyLeader) { io.to(socket.id).emit('action_error', 'Only the TV/Host or Lobby Leader can start the game.'); return; }
+    if (!isLobbyLeader) { io.to(socket.id).emit('action_error', 'Only the Lobby Leader can start the game.'); return; }
     if (game.gameStatus !== 'lobby') { io.to(socket.id).emit('action_error', 'Game has already started.'); return; }
     if (game.players.length < 2) { io.to(socket.id).emit('action_error', 'At least 2 players are required to start the game.'); return; }
     

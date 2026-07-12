@@ -106,13 +106,14 @@ function runTest(name, fn) {
 // ==========================================
 // 1. start requires 2 players
 // ==========================================
-runTest('start requires 2 players (via actual Socket.IO events)', () => {
-  const { game, hostSocket } = setupTestGame('ROOM1', [
+runTest('start requires 2 players and lobby leader socket (via actual Socket.IO events)', () => {
+  const { game, hostSocket, sockets } = setupTestGame('ROOM1', [
     { id: 'p1', name: 'Aarav', color: '#ef4444' }
   ]);
+  const p1Socket = sockets[0];
   
-  // Host attempts to start game with 1 player
-  hostSocket._handlers['start_game']({ room: 'ROOM1' });
+  // Player 1 (Lobby Leader) attempts to start game with 1 player -> fails (needs 2 players)
+  p1Socket._handlers['start_game']({ room: 'ROOM1' });
   assert.strictEqual(game.gameStatus, 'lobby');
   
   // Add 2nd player
@@ -129,8 +130,16 @@ runTest('start requires 2 players (via actual Socket.IO events)', () => {
   connectionListeners.forEach(listener => listener(p2Socket));
   p2Socket._handlers['join_game']({ room: 'ROOM1', name: 'Diya', color: '#3b82f6', clientId: 'p2' });
   
-  // Host starts game with 2 players
+  // Host attempts to start game -> rejected (not lobby leader)
   hostSocket._handlers['start_game']({ room: 'ROOM1' });
+  assert.strictEqual(game.gameStatus, 'lobby');
+
+  // Player 2 attempts to start game -> rejected (not lobby leader)
+  p2Socket._handlers['start_game']({ room: 'ROOM1' });
+  assert.strictEqual(game.gameStatus, 'lobby');
+  
+  // Player 1 starts game with 2 players -> succeeds
+  p1Socket._handlers['start_game']({ room: 'ROOM1' });
   assert.strictEqual(game.gameStatus, 'active');
 });
 
@@ -161,13 +170,13 @@ runTest('starting ties among tied players', () => {
 // 3. late join blocked / reconnect allowed
 // ==========================================
 runTest('late join blocked / reconnect allowed (via actual Socket.IO events)', () => {
-  const { game, hostSocket } = setupTestGame('ROOM3', [
+  const { game, hostSocket, sockets } = setupTestGame('ROOM3', [
     { id: 'p1', name: 'Aarav', color: '#ef4444' },
     { id: 'p2', name: 'Diya', color: '#3b82f6' }
   ]);
   
   // Start game
-  hostSocket._handlers['start_game']({ room: 'ROOM3' });
+  sockets[0]._handlers['start_game']({ room: 'ROOM3' });
   assert.strictEqual(game.gameStatus, 'active');
   
   // Try to join a new player (late join)
@@ -213,7 +222,7 @@ runTest('declined property auction starts for everyone (via actual Socket.IO eve
     { id: 'p2', name: 'Diya', color: '#3b82f6' }
   ]);
   
-  hostSocket._handlers['start_game']({ room: 'ROOM4' });
+  sockets[0]._handlers['start_game']({ room: 'ROOM4' });
   
   // Mock landing on a property (Patna, ID=1)
   game.pendingBuy = { playerId: 'p1', propertyId: 1 };
@@ -285,7 +294,7 @@ runTest('over-cash bid rejected (via actual Socket.IO events)', () => {
     { id: 'p2', name: 'Diya', color: '#3b82f6' }
   ]);
   
-  hostSocket._handlers['start_game']({ room: 'ROOM7' });
+  sockets[0]._handlers['start_game']({ room: 'ROOM7' });
   
   // Set Aarav's cash to 100
   game.players[0].cash = 100;
@@ -605,7 +614,7 @@ runTest('unmortgage transferred resolution block prevents rolls (via actual Sock
     { id: 'p2', name: 'Diya', color: '#3b82f6' }
   ]);
   
-  hostSocket._handlers['start_game']({ room: 'ROOM21' });
+  sockets[0]._handlers['start_game']({ room: 'ROOM21' });
   
   // Setup resolution queue where p2 must decide on mortgaged property
   game.bankruptcyResolveQueue = [{ propertyId: 1, creditorId: 'p2', bankruptPlayerName: 'Aarav' }];

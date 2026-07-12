@@ -207,7 +207,23 @@ async function completeTurn(page, name) {
     // ═══════════════════════════════════════════════════
     console.log('\n📋 TEST 4: Start Game Activates Gameplay');
     
+    // Player 2 (Non-leader) attempts to start the game
+    console.log("  Player 2 (Non-leader) attempts to emit 'start_game'...");
+    await player2Page.evaluate((room) => {
+      window.socket.emit('start_game', { room });
+    }, randomRoomId);
+    await sleep(1500);
+
+    // Assert that the game is STILL in lobby status on the host (i.e. host still shows player lobby instead of starting rolls)
+    const hostTextLobbyAfterP2 = await hostPage.evaluate(() => document.body.innerText);
+    if (!hostTextLobbyAfterP2.toUpperCase().includes('STARTING ROLLS') && !hostTextLobbyAfterP2.toUpperCase().includes('TURN ORDER')) {
+      pass("Non-leader phone's start_game request was successfully rejected by server");
+    } else {
+      fail("Non-leader phone's start_game request", `Game unexpectedly started on non-leader request: ${hostTextLobbyAfterP2}`);
+    }
+
     // Player 1 (Lobby Leader) clicks Start Game button
+    console.log("  Player 1 (Lobby Leader) clicks 'Start Game' button...");
     await player1Page.evaluate(() => {
       const buttons = [...document.querySelectorAll('button')];
       const startBtn = buttons.find(b => b.textContent.toUpperCase().includes('START GAME'));
