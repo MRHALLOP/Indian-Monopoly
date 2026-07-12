@@ -4,7 +4,9 @@ import BoardComponent from './host/BoardComponent';
 import ControllerComponent from './mobile/ControllerComponent';
 
 const socket = io.connect(`http://${window.location.hostname}:3001`);
-window.socket = socket;
+if (import.meta.env.DEV) {
+  window.socket = socket;
+}
 
 function Icon({ name, fill = 0, size = 24, className = '' }) {
   return (
