@@ -723,6 +723,7 @@ runTest('every jail path emits exactly one JAIL visual event; visiting Jail tile
   game.players[0].consecutiveDoubles = 2;
   game.players[0].position = 0;
   game.hasRolled = false;
+  game.currentTurn = 0;
 
   sockets[0]._handlers['roll_dice']({ room: 'ROOM23' });
 

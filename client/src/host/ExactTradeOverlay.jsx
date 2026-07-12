@@ -35,6 +35,13 @@ function initials(name = '') {
     : name.slice(0, 2).toUpperCase();
 }
 
+function formatName(name = '') {
+  if (name.length > 12) {
+    return name.slice(0, 12) + '...';
+  }
+  return name;
+}
+
 function bundleTitle(ids = [], cash = 0, jailCards = 0, limit = false) {
   const bits = [];
   if (cash > 0) bits.push(`₹${money(cash)}`);
@@ -532,7 +539,7 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
             >
               <div className="role">Offer made by</div>
               <div className="avatar"><OffererIcon color="currentColor" /></div>
-              <div className="person">{activeTrade.initiatorName}</div>
+              <div className="person" title={activeTrade.initiatorName}>{formatName(activeTrade.initiatorName)}</div>
               <div className="balance">Balance <strong>₹{money(initiator?.cash)}</strong></div>
             </motion.article>
 
@@ -545,7 +552,7 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
               <div className="bundle">
                 <div className="asset-icon">{bundleIcon(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards)}</div>
                 <div className="copy">
-                  <div className="bundle-label">{activeTrade.initiatorName} gives</div>
+                  <div className="bundle-label" title={activeTrade.initiatorName}>{formatName(activeTrade.initiatorName)} gives</div>
                   <div
                     className="bundle-title"
                     title={bundleTitle(activeTrade.offerPropertyIds, activeTrade.offerCash, activeTrade.offerJailCards, false)}
@@ -567,7 +574,7 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
 
               <div className="bundle reverse">
                 <div className="copy">
-                  <div className="bundle-label">{activeTrade.targetName} gives</div>
+                  <div className="bundle-label" title={activeTrade.targetName}>{formatName(activeTrade.targetName)} gives</div>
                   <div
                     className="bundle-title"
                     title={bundleTitle(activeTrade.requestPropertyIds, activeTrade.requestCash, activeTrade.requestJailCards, false)}
@@ -595,7 +602,7 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
             >
               <div className="role">{accepted ? 'Accepted by' : declined ? 'Declined by' : 'Waiting on'}</div>
               <div className="avatar"><ReceiverIcon color="currentColor" /></div>
-              <div className="person">{activeTrade.targetName}</div>
+              <div className="person" title={activeTrade.targetName}>{formatName(activeTrade.targetName)}</div>
               <div className="balance">Balance <strong>₹{money(receiver?.cash)}</strong></div>
             </motion.article>
           </div>
@@ -606,14 +613,17 @@ export default function ExactTradeOverlay({ activeTrade, tradeTimeLeft, boardSta
           initial={stampInitial}
           animate={stampAnimate}
           transition={{ duration: .55, delay: .2, ease: [0.16, 1, 0.3, 1] }}
+          title={pending ? `Needs your call, ${activeTrade.targetName}` : undefined}
         >
-          {stamp}
+          {accepted ? 'DEAL COMPLETED!' : declined ? 'DEAL REJECTED' : `Needs your call, ${formatName(activeTrade.targetName)}`}
         </motion.div>
 
         <footer className="footer">
           <div className="phone-note">
             <span className="phone" aria-hidden="true" />
-            <span>{pending ? `${activeTrade.targetName}, answer on your phone` : accepted ? 'Deal approved on phone!' : 'Negotiation closed'}</span>
+            <span title={pending ? `${activeTrade.targetName}, answer on your phone` : undefined}>
+              {pending ? `${formatName(activeTrade.targetName)}, answer on your phone` : accepted ? 'Deal approved on phone!' : 'Negotiation closed'}
+            </span>
           </div>
           <div className="timer">
             <span className="timer-label">{pending ? 'Offer expires in' : 'Trade closed'}</span>

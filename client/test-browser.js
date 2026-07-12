@@ -19,6 +19,8 @@ import assert from 'assert';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = path.join(__dirname, 'test-screenshots');
+import fs from 'fs';
+fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 const BASE_URL = 'http://localhost:5173';
 
 async function takeScreenshot(page, name) {
@@ -329,6 +331,71 @@ async function completeTurn(page, name) {
     await completeTurn(activePage, activeName);
     pass('Turn cycle completed successfully');
     await takeScreenshot(hostPage, '003_host_first_buy');
+
+    // ═══════════════════════════════════════════════════
+    // TEST 8: Viewport Overflow & Trade Layout Safety
+    // ═══════════════════════════════════════════════════
+    console.log('\n📋 TEST 8: Viewport Overflow & Trade Layout Safety');
+
+    // Trigger trade offer with 6 properties on the host to simulate overflow condition
+    console.log('  Triggering complex trade offer on Host...');
+    await hostPage.evaluate(() => {
+      if (window.__testTriggerVisual) {
+        window.__testTriggerVisual({
+          type: 'TRADE_OFFER',
+          initiatorName: 'AaravWithAVeryLongNameIndeed',
+          targetName: 'DiyaWithAVeryLongNameIndeed',
+          offerCash: 1500,
+          offerJailCards: 2,
+          offerPropertyIds: [1, 3, 5, 6, 8, 9], // 6 properties
+          requestCash: 500,
+          requestJailCards: 0,
+          requestPropertyIds: [11, 12, 13, 14, 15] // 5 properties
+        });
+      }
+    });
+    await sleep(1000);
+
+    const viewports = [
+      { width: 1280, height: 720 },
+      { width: 1366, height: 768 },
+      { width: 1920, height: 1080 }
+    ];
+
+    for (const vp of viewports) {
+      console.log(`  Evaluating viewport ${vp.width}x${vp.height}...`);
+      await hostPage.setViewport(vp);
+      await sleep(1000);
+
+      // Verify no horizontal or vertical document scrollbars/overflow
+      const overflow = await hostPage.evaluate(() => {
+        const docWidth = document.documentElement.scrollWidth;
+        const winWidth = window.innerWidth;
+        const docHeight = document.documentElement.scrollHeight;
+        const winHeight = window.innerHeight;
+        return {
+          hasHorizontal: docWidth > winWidth + 2, // 2px buffer for rounding/borders
+          hasVertical: docHeight > winHeight + 2,
+          scrollWidth: docWidth,
+          innerWidth: winWidth,
+          scrollHeight: docHeight,
+          innerHeight: winHeight
+        };
+      });
+
+      if (!overflow.hasHorizontal && !overflow.hasVertical) {
+        pass(`No scroll overflow detected at viewport ${vp.width}x${vp.height}`);
+      } else {
+        fail(`Viewport overflow check at ${vp.width}x${vp.height}`,
+             `hasHorizontal=${overflow.hasHorizontal} (${overflow.scrollWidth} > ${overflow.innerWidth}), ` +
+             `hasVertical=${overflow.hasVertical} (${overflow.scrollHeight} > ${overflow.innerHeight})`);
+      }
+
+      await takeScreenshot(hostPage, `viewport_${vp.width}x${vp.height}_trade_overflow`);
+    }
+
+    // Restore standard host page viewport
+    await hostPage.setViewport({ width: 1400, height: 900 });
 
   } catch (error) {
     console.error('\n💥 UNEXPECTED E2E TEST ERROR:', error.message);
