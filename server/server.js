@@ -77,37 +77,86 @@ function getRandomColor() {
 }
 
 const chanceDeckMaster = [
-  { text: "Advance to GO. Collect ₹200.", type: "advance_go" },
-  { text: "Caught in Mumbai traffic! Go directly to Jail.", type: "go_jail" },
-  { text: "Get Out of Jail Free. (Bribe a politician)", type: "jail_card" },
-  { text: "Speeding challan caught on camera. Pay ₹15.", type: "money", amount: -15 },
-  { text: "Your startup got funded! Collect ₹150.", type: "money", amount: 150 },
-  { text: "Pay EMI for your new SUV. Pay ₹50.", type: "money", amount: -50 },
-  { text: "Won the Diwali bumper lottery! Collect ₹100.", type: "money", amount: 100 },
-  { text: "Bank server down. Error in your favor. Collect ₹50.", type: "money", amount: 50 },
-  { text: "Advance to Mumbai.", type: "advance_mumbai" },
-  { text: "Go back 3 spaces.", type: "go_back_3" }
+  { text: "Advance to GO. Collect ₹200.", type: "advance_go", deckType: "chance" },
+  { text: "Advance to Mumbai.", type: "advance_mumbai", deckType: "chance" },
+  { text: "Advance to Lucknow. If you pass GO, collect ₹200.", type: "advance_lucknow", deckType: "chance" },
+  { text: "Advance to Panaji. If you pass GO, collect ₹200.", type: "advance_panaji", deckType: "chance" },
+  { text: "Advance to nearest Station. If owned, pay owner twice the rent.", type: "nearest_station", deckType: "chance" },
+  { text: "Advance to nearest Station. If owned, pay owner twice the rent.", type: "nearest_station", deckType: "chance" },
+  { text: "Advance to nearest Utility. If owned, throw dice and pay owner 10 times the throw.", type: "nearest_utility", deckType: "chance" },
+  { text: "Bank pays you dividend of ₹50.", type: "money", amount: 50, deckType: "chance" },
+  { text: "Get Out of Jail Free.", type: "jail_card", deckType: "chance" },
+  { text: "Go back 3 spaces.", type: "go_back_3", deckType: "chance" },
+  { text: "Go directly to Jail. Do not pass GO.", type: "go_jail", deckType: "chance" },
+  { text: "Make general repairs on all your property. For each house pay ₹25. For each hotel pay ₹100.", type: "repairs", houseCost: 25, hotelCost: 100, deckType: "chance" },
+  { text: "Speeding challan. Pay ₹15.", type: "money", amount: -15, deckType: "chance" },
+  { text: "Advance to Chennai Central. If you pass GO, collect ₹200.", type: "advance_chennai", deckType: "chance" },
+  { text: "You have been elected Chairman of the Board. Pay each player ₹50.", type: "chairman", deckType: "chance" },
+  { text: "Won Diwali bumper lottery! Collect ₹100.", type: "money", amount: 100, deckType: "chance" }
 ];
 
 const chestDeckMaster = [
-  { text: "Advance to GO. Collect ₹200.", type: "advance_go" },
-  { text: "Doctor's consultation fee. Pay ₹50.", type: "money", amount: -50 },
-  { text: "Get Out of Jail Free. (Uncle is a DSP)", type: "jail_card" },
-  { text: "Go directly to Jail. Do not pass GO.", type: "go_jail" },
-  { text: "Income tax refund! Collect ₹20.", type: "money", amount: 20 },
-  { text: "LIC Policy matures. Collect ₹100.", type: "money", amount: 100 },
-  { text: "Pay Apollo Hospital fees. Pay ₹100.", type: "money", amount: -100 },
-  { text: "Won local beauty contest. Collect ₹10.", type: "money", amount: 10 },
-  { text: "Children's private school fees. Pay ₹50.", type: "money", amount: -50 },
-  { text: "Received payment for IT consultancy. Collect ₹25.", type: "money", amount: 25 },
-  { text: "Assessed for street repairs. Pay ₹40.", type: "money", amount: -40 },
-  { text: "Fixed deposit matures. Receive ₹100.", type: "money", amount: 100 }
+  { text: "Advance to GO. Collect ₹200.", type: "advance_go", deckType: "chest" },
+  { text: "Bank error in your favor. Collect ₹200.", type: "money", amount: 200, deckType: "chest" },
+  { text: "Doctor's consultation fee. Pay ₹50.", type: "money", amount: -50, deckType: "chest" },
+  { text: "From sale of stock you get ₹50.", type: "money", amount: 50, deckType: "chest" },
+  { text: "Get Out of Jail Free.", type: "jail_card", deckType: "chest" },
+  { text: "Go directly to Jail. Do not pass GO.", type: "go_jail", deckType: "chest" },
+  { text: "Holiday fund matures. Receive ₹100.", type: "money", amount: 100, deckType: "chest" },
+  { text: "Income tax refund. Collect ₹20.", type: "money", amount: 20, deckType: "chest" },
+  { text: "It is your birthday. Collect ₹10 from every player.", type: "birthday", deckType: "chest" },
+  { text: "Life insurance matures. Collect ₹100.", type: "money", amount: 100, deckType: "chest" },
+  { text: "Pay Apollo Hospital fees. Pay ₹100.", type: "money", amount: -100, deckType: "chest" },
+  { text: "Children's private school fees. Pay ₹50.", type: "money", amount: -50, deckType: "chest" },
+  { text: "Receive payment for IT consultancy. Collect ₹25.", type: "money", amount: 25, deckType: "chest" },
+  { text: "Assessed for street repairs. Pay ₹40 per house. Pay ₹115 per hotel.", type: "repairs", houseCost: 40, hotelCost: 115, deckType: "chest" },
+  { text: "Won local beauty contest. Collect ₹10.", type: "money", amount: 10, deckType: "chest" },
+  { text: "Receive ₹100 from building loan.", type: "money", amount: 100, deckType: "chest" }
 ];
 
-const createDeck = (type) => {
+const createDeck = (type, game) => {
   const master = type === 'chance' ? chanceDeckMaster : chestDeckMaster;
-  return [...master].sort(() => Math.random() - 0.5);
+  // Filter out any held jail cards
+  const heldByAny = game && game.players && game.players.some(p => p.jailCards && p.jailCards.includes(type));
+  const filtered = master.filter(c => !(c.type === 'jail_card' && heldByAny));
+  return [...filtered].sort(() => Math.random() - 0.5);
 };
+
+function rollDie(game) {
+  if (game && game.testDiceQueue && game.testDiceQueue.length > 0) {
+    return game.testDiceQueue.shift();
+  }
+  return Math.floor(Math.random() * 6) + 1;
+}
+
+function determineStartingPlayer(game) {
+  let candidates = game.players.map((p, idx) => ({ idx, player: p }));
+  let round = 1;
+  while (candidates.length > 1) {
+    const rolls = candidates.map(c => {
+      const d1 = rollDie(game);
+      const d2 = rollDie(game);
+      return { ...c, roll: d1 + d2, d1, d2 };
+    });
+    const maxRoll = Math.max(...rolls.map(r => r.roll));
+    const winners = rolls.filter(r => r.roll === maxRoll);
+    
+    const rollDesc = rolls.map(r => `${r.player.name} rolled ${r.roll} (${r.d1}+${r.d2})`).join(', ');
+    if (round === 1) {
+      logEvent(game, `> Starting order rolls: ${rollDesc}.`);
+    } else {
+      logEvent(game, `> Tie break round ${round - 1}: ${rollDesc}.`);
+    }
+    
+    if (winners.length === 1) {
+      logEvent(game, `> ${winners[0].player.name} starts the game!`);
+      return winners[0].idx;
+    }
+    candidates = winners.map(w => ({ idx: w.idx, player: w.player }));
+    round++;
+  }
+  return 0;
+}
 
 function logEvent(game, message) {
   game.logs.unshift(message);
@@ -156,34 +205,131 @@ function calculateAssets(game, player) {
   return total;
 }
 
+function chargePlayer(game, room, debtor, amount, creditorId) {
+  if (amount <= 0) return;
+  const available = Math.max(0, debtor.cash);
+  const payment = Math.min(amount, available);
+  
+  debtor.cash -= payment;
+  if (creditorId) {
+    const creditor = game.players.find(p => p.id === creditorId);
+    if (creditor) creditor.cash += payment;
+  }
+  
+  const remainder = amount - payment;
+  if (remainder > 0) {
+    const assets = calculateAssets(game, debtor);
+    if (assets > 0) {
+      debtor.needsToRaiseMoney = true;
+      debtor.debtAmount = remainder;
+      debtor.creditorId = creditorId;
+      logEvent(game, `> ${debtor.name} needs to raise ₹${remainder} to ${creditorId ? game.players.find(p => p.id === creditorId).name : 'the Bank'}.`);
+      io.to(debtor.id).emit('raise_money', { debt: remainder, assetValue: assets });
+    } else {
+      debtor.creditorId = creditorId;
+      declareBankruptcy(game, room, debtor);
+    }
+  }
+}
+
+function gainCash(game, room, player, amount) {
+  if (amount <= 0) return;
+  if (player.needsToRaiseMoney && player.debtAmount > 0) {
+    const payment = Math.min(amount, player.debtAmount);
+    player.debtAmount -= payment;
+    
+    if (player.creditorId) {
+      const creditor = game.players.find(p => p.id === player.creditorId);
+      if (creditor) creditor.cash += payment;
+    }
+    
+    logEvent(game, `> ${player.name} paid ₹${payment} towards their debt.`);
+    
+    const remainder = amount - payment;
+    if (player.debtAmount === 0) {
+      player.needsToRaiseMoney = false;
+      player.creditorId = null;
+      logEvent(game, `> ${player.name} paid off their debt completely!`);
+      io.to(player.id).emit('raise_money_resolved');
+      player.cash += remainder;
+    }
+  } else {
+    player.cash += amount;
+  }
+}
+
 function checkBankruptcy(game, room, playerId) {
   const player = game.players.find(p => p.id === playerId);
-  if (!player || player.cash >= 0) return;
-  const assetValue = calculateAssets(game, player);
-  const debt = -player.cash;
-  if (assetValue > 0) {
-    player.needsToRaiseMoney = true;
-    player.debtAmount = debt;
-    logEvent(game, `> ${player.name} needs to raise ₹${debt}!`);
-    io.to(player.id).emit('raise_money', { debt: debt, assetValue: assetValue });
-    broadcastUpdate(room, game);
-  } else {
-    declareBankruptcy(game, room, player);
+  if (!player) return;
+  if (player.cash < 0) {
+    const debt = -player.cash;
+    player.cash = 0; // normalize
+    chargePlayer(game, room, player, debt, player.creditorId);
   }
 }
 
 function declareBankruptcy(game, room, player) {
   player.bankrupt = true;
+  
+  // 1. Liquidate all buildings of the bankrupt player
+  let cashFromBuildings = 0;
+  for (const propId of player.properties) {
+    const tile = CITIES[propId];
+    const state = game.boardState[propId];
+    if (state && (state.houses || 0) > 0) {
+      const houses = state.houses;
+      const houseCost = tile.houseCost || (tile.price / 2);
+      const refund = Math.floor(houseCost / 2) * houses;
+      cashFromBuildings += refund;
+      
+      // Restore Bank inventory
+      if (houses === 5) {
+        game.availableHotels += 1;
+        game.availableHouses += 4;
+      } else {
+        game.availableHouses += houses;
+      }
+      game.availableHouses = Math.min(32, game.availableHouses);
+      game.availableHotels = Math.min(12, game.availableHotels);
+      state.houses = 0;
+      logEvent(game, `> Liquidated buildings on ${tile.name} for ₹${refund}.`);
+    }
+  }
+  
+  player.cash += cashFromBuildings;
+  
+  const creditor = player.creditorId ? game.players.find(p => p.id === player.creditorId) : null;
+  const finalCash = Math.max(0, player.cash);
+  
+  // 2. Transfer cash and properties exactly once
+  if (creditor) {
+    creditor.cash += finalCash;
+    logEvent(game, `> Transferred ₹${finalCash} remaining cash to ${creditor.name}.`);
+  }
   player.cash = 0;
   player.needsToRaiseMoney = false;
   player.debtAmount = 0;
-  const creditor = player.creditorId ? game.players.find(p => p.id === player.creditorId) : null;
+  
+  // Return jail cards held by bankrupt player back to matching decks
+  if (player.jailCards) {
+    player.jailCards.forEach(deckType => {
+      const deck = deckType === 'chance' ? game.chanceDeck : game.chestDeck;
+      const card = (deckType === 'chance' ? chanceDeckMaster : chestDeckMaster).find(c => c.type === 'jail_card');
+      if (card) deck.push(card);
+    });
+    player.jailCards = [];
+    player.getOutOfJailCards = 0;
+  }
+  
   if (creditor) {
     logEvent(game, `> ${player.name} went bankrupt to ${creditor.name}!`);
   } else {
     logEvent(game, `> ${player.name} went bankrupt to the Bank.`);
   }
+  
   const mortgagedPropertiesToResolve = [];
+  const bankPropertiesToAuction = [];
+  
   for (const propId of player.properties) {
     const tile = CITIES[propId];
     const state = game.boardState[propId];
@@ -198,12 +344,16 @@ function declareBankruptcy(game, room, player) {
         logEvent(game, `> ${tile.name} transferred to ${creditor.name}.`);
       }
     } else {
+      // Returns to Bank building-free and unmortgaged
       state.owner = null;
       state.houses = 0;
       state.mortgaged = false;
+      bankPropertiesToAuction.push(propId);
+      logEvent(game, `> ${tile.name} returned to the Bank.`);
     }
   }
   player.properties = [];
+  
   if (creditor && mortgagedPropertiesToResolve.length > 0) {
     game.bankruptcyResolveQueue = mortgagedPropertiesToResolve.map(propId => ({
       propertyId: propId,
@@ -212,24 +362,47 @@ function declareBankruptcy(game, room, player) {
     }));
     logEvent(game, `> ${creditor.name} must resolve ${mortgagedPropertiesToResolve.length} mortgaged properties.`);
   }
-  io.to(room).emit('trigger_visual', { type: 'BANKRUPT', player: player.name });
-  if (!game.bankruptcyResolveQueue || game.bankruptcyResolveQueue.length === 0) {
-    finishBankruptcyDeclaration(game, room, player);
-  } else {
-    broadcastUpdate(room, game);
+  
+  if (!creditor && bankPropertiesToAuction.length > 0) {
+    game.bankruptcyAuctionQueue = bankPropertiesToAuction;
+    logEvent(game, `> Bank will sequentially auction ${bankPropertiesToAuction.length} returned properties.`);
   }
+  
+  io.to(room).emit('trigger_visual', { type: 'BANKRUPT', player: player.name });
+  resolveBankruptcyStep(game, room, player);
+}
+
+function resolveBankruptcyStep(game, room, player) {
+  if (game.bankruptcyResolveQueue && game.bankruptcyResolveQueue.length > 0) {
+    broadcastUpdate(room, game);
+    return;
+  }
+  
+  if (game.bankruptcyAuctionQueue && game.bankruptcyAuctionQueue.length > 0) {
+    const nextPropId = game.bankruptcyAuctionQueue[0];
+    const activePlayers = game.players.filter(p => !p.bankrupt).map(p => p.id);
+    game.auction = { status: true, propertyId: nextPropId, currentBid: 0, highestBidder: null, highestBidderName: null, activePlayers: activePlayers };
+    logEvent(game, `> Sequentially auctioning returned property ${CITIES[nextPropId].name}.`);
+    io.to(room).emit('auction_start', game.auction);
+    startAuctionTimer(room);
+    broadcastUpdate(room, game);
+    return;
+  }
+  
+  finishBankruptcyDeclaration(game, room, player);
 }
 
 function finishBankruptcyDeclaration(game, room, player) {
   const alive = game.players.filter(p => !p.bankrupt);
   if (alive.length === 1) {
+    game.gameStatus = 'finished'; // Mark finished before game-over
     logEvent(game, `> 🏆 ${alive[0].name} WINS THE GAME!`);
     io.to(room).emit('trigger_visual', { type: 'GAME_OVER', winner: alive[0].name });
     io.to(room).emit('game_over', { winner: alive[0].name });
     deleteSave(room);
   }
   const currentPlayer = game.players[game.currentTurn];
-  if (currentPlayer && currentPlayer.id === player.id) {
+  if (player && currentPlayer && currentPlayer.id === player.id) {
     do {
       game.currentTurn = (game.currentTurn + 1) % game.players.length;
     } while (game.players[game.currentTurn].bankrupt && game.players.some(p => !p.bankrupt));
@@ -267,9 +440,6 @@ function endAuction(game, room) {
   if (a.highestBidder) {
     winner = game.players.find(p => p.id === a.highestBidder);
     finalPrice = a.currentBid;
-  } else if (a.activePlayers.length === 1) {
-    winner = game.players.find(p => p.id === a.activePlayers[0]);
-    finalPrice = 10;
   }
   a.status = false;
   if (winner) {
@@ -288,6 +458,11 @@ function endAuction(game, room) {
     logEvent(game, `> Auction ended with no winner. Property remains unsold.`);
     io.to(room).emit('auction_end', { propertyId: propId, finalPrice: 0 });
     broadcastUpdate(room, game);
+  }
+  
+  if (game.bankruptcyAuctionQueue && game.bankruptcyAuctionQueue.length > 0 && game.bankruptcyAuctionQueue[0] === propId) {
+    game.bankruptcyAuctionQueue.shift();
+    resolveBankruptcyStep(game, room, null);
   }
 }
 
@@ -323,13 +498,205 @@ function validateTrade(game, initiator, target, { offerCash, requestCash, offerP
   return { oProps, rProps, oCash, rCash, oJail, rJail };
 }
 
+function movePlayerTo(game, room, player, targetPos, collectGo = true, specialRules = {}) {
+  const beforePos = player.position;
+  player.position = targetPos;
+  if (collectGo && targetPos < beforePos && targetPos !== 10 && beforePos !== 10) {
+    gainCash(game, room, player, 200);
+    logEvent(game, `> ${player.name} passed GO and collected ₹200.`);
+  }
+  
+  const tile = CITIES[targetPos];
+  game.landedTile = { tileId: tile.id, tileName: tile.name, tileColor: tile.color || null, tilePrice: tile.price || null, tileRent: tile.rent || null, tileType: tile.type || 'property', houseCost: tile.houseCost || (tile.price ? Math.floor(tile.price * 0.5) : null), playerName: player.name, playerColor: player.color, context: null };
+  const tileState = game.boardState[tile.id] || {};
+  
+  if (tile.type === 'special' || tile.type === 'tax') {
+    if (tile.id === 30) {
+      player.position = 10; player.inJail = true; player.jailTurns = 0; player.consecutiveDoubles = 0; game.hasRolled = true;
+      game.landedTile.context = 'jail';
+      logEvent(game, `> ${player.name} was sent to Jail.`);
+    } else if (tile.id === 20) {
+      logEvent(game, `> ${player.name} landed on Free Parking.`);
+    } else if (tile.type === 'tax') {
+      game.landedTile.context = 'tax';
+      game.landedTile.amount = tile.cost;
+      logEvent(game, `> ${player.name} paid ₹${tile.cost} for ${tile.name}.`);
+      chargePlayer(game, room, player, tile.cost, null);
+    } else if (tile.name.includes("Chance") || tile.name.includes("Community Chest")) {
+      drawAndResolveCard(game, room, player, tile.name.includes("Chance") ? 'chance' : 'chest', specialRules.roll || 0);
+    }
+  } else {
+    if (tileState.owner && tileState.owner !== player.id && !tileState.mortgaged) {
+      const owner = game.players.find(p => p.id === tileState.owner);
+      let rentAmount = 0;
+      if (specialRules.doubleRent) {
+        const ownedStations = owner.properties.filter(p => CITIES[p].type === 'station').length;
+        rentAmount = 2 * ([25, 50, 100, 200][ownedStations - 1] || 25);
+      } else if (specialRules['10xUtility']) {
+        const d1 = rollDie(game);
+        const d2 = rollDie(game);
+        io.to(room).emit('trigger_visual', { type: 'DICE_ROLL', dice: [d1, d2] });
+        rentAmount = 10 * (d1 + d2);
+        logEvent(game, `> Nearest utility dice throw: ${d1} + ${d2} = ${d1+d2}. Rent: ₹${rentAmount}`);
+      } else {
+        if (tile.type === 'station') {
+          const ownedStations = owner.properties.filter(p => CITIES[p].type === 'station').length;
+          rentAmount = [25, 50, 100, 200][ownedStations - 1] || 25;
+        } else if (tile.type === 'utility') {
+          const ownedUtils = owner.properties.filter(p => CITIES[p].type === 'utility').length;
+          rentAmount = (specialRules.roll || 0) * (ownedUtils === 2 ? 10 : 4);
+        } else {
+          rentAmount = tile.rent ? tile.rent[tileState.houses || 0] : 0;
+          if ((tileState.houses || 0) === 0 && tile.color && COLOR_GROUPS[tile.color]) {
+            const ownsAll = COLOR_GROUPS[tile.color].every(propId => { const ps = game.boardState[propId]; return ps && ps.owner === owner.id; });
+            if (ownsAll) rentAmount *= 2;
+          }
+        }
+      }
+      chargePlayer(game, room, player, rentAmount, owner.id);
+      game.landedTile.context = 'rent_due';
+      game.landedTile.amount = rentAmount;
+      game.landedTile.ownerName = owner.name;
+      game.landedTile.ownerColor = owner.color;
+      io.to(room).emit('trigger_visual', { type: 'RENT', payer: player.name, receiver: owner.name, city: tile.name, amount: rentAmount, tileColor: tile.color || null, tilePrice: tile.price, tileRent: tile.rent || null, houseCost: tile.houseCost || (tile.price ? Math.floor(tile.price * 0.5) : null), tileType: tile.type || 'property', houses: tileState.houses || 0 });
+    } else if (!tileState.owner && tile.price) {
+      game.landedTile.context = 'for_sale';
+      game.pendingBuy = { playerId: player.id, propertyId: tile.id };
+      io.to(player.id).emit('prompt_buy', tile);
+    }
+  }
+}
+
+function executeCardAction(game, room, player, card, roll) {
+  if (card.type === 'money') {
+    if (card.amount > 0) {
+      gainCash(game, room, player, card.amount);
+    } else {
+      chargePlayer(game, room, player, -card.amount, null);
+    }
+  } else if (card.type === 'go_jail') {
+    player.position = 10;
+    player.inJail = true;
+    player.jailTurns = 0;
+    player.consecutiveDoubles = 0;
+    game.hasRolled = true;
+    logEvent(game, `> ${player.name} went to Jail.`);
+  } else if (card.type === 'advance_go') {
+    movePlayerTo(game, room, player, 0, true);
+  } else if (card.type === 'jail_card') {
+    player.jailCards = player.jailCards || [];
+    player.jailCards.push(card.deckType);
+    player.getOutOfJailCards = player.jailCards.length;
+  } else if (card.type === 'advance_mumbai') {
+    movePlayerTo(game, room, player, 39, true);
+  } else if (card.type === 'advance_lucknow') {
+    movePlayerTo(game, room, player, 21, true);
+  } else if (card.type === 'advance_panaji') {
+    movePlayerTo(game, room, player, 6, true);
+  } else if (card.type === 'advance_chennai') {
+    movePlayerTo(game, room, player, 5, true);
+  } else if (card.type === 'go_back_3') {
+    const targetPos = (player.position - 3 + 40) % 40;
+    movePlayerTo(game, room, player, targetPos, false);
+  } else if (card.type === 'nearest_station') {
+    const stations = [5, 15, 25, 35];
+    let targetPos = stations[0];
+    let minDist = 40;
+    for (const s of stations) {
+      let dist = (s - player.position + 40) % 40;
+      if (dist === 0) dist = 40;
+      if (dist < minDist) {
+        minDist = dist;
+        targetPos = s;
+      }
+    }
+    movePlayerTo(game, room, player, targetPos, true, { doubleRent: true, roll });
+  } else if (card.type === 'nearest_utility') {
+    const utils = [12, 27];
+    let targetPos = utils[0];
+    let minDist = 40;
+    for (const u of utils) {
+      let dist = (u - player.position + 40) % 40;
+      if (dist === 0) dist = 40;
+      if (dist < minDist) {
+        minDist = dist;
+        targetPos = u;
+      }
+    }
+    movePlayerTo(game, room, player, targetPos, true, { '10xUtility': true, roll });
+  } else if (card.type === 'repairs') {
+    let houses = 0;
+    let hotels = 0;
+    for (const propId of player.properties) {
+      const state = game.boardState[propId];
+      if (state) {
+        if (state.houses === 5) hotels++;
+        else houses += (state.houses || 0);
+      }
+    }
+    const cost = houses * card.houseCost + hotels * card.hotelCost;
+    logEvent(game, `> ${player.name} owes ₹${cost} for repairs.`);
+    chargePlayer(game, room, player, cost, null);
+  } else if (card.type === 'chairman') {
+    const opponents = game.players.filter(p => p.id !== player.id && !p.bankrupt);
+    opponents.forEach(opp => {
+      chargePlayer(game, room, player, 50, opp.id);
+    });
+  } else if (card.type === 'birthday') {
+    const opponents = game.players.filter(p => p.id !== player.id && !p.bankrupt);
+    opponents.forEach(opp => {
+      chargePlayer(game, room, opp, 10, player.id);
+    });
+  }
+}
+
+function drawAndResolveCard(game, room, player, deckType, roll) {
+  const deck = deckType === 'chance' ? game.chanceDeck : game.chestDeck;
+  if (deck.length === 0) {
+    const created = createDeck(deckType, game);
+    deck.push(...created);
+  }
+  const card = deck.shift();
+  if (card.type !== 'jail_card') {
+    deck.push(card);
+  }
+  logEvent(game, `> ${player.name} drew: ${card.text}`);
+  const deckName = deckType === 'chance' ? "CHANCE" : "COMMUNITY CHEST";
+  io.to(room).emit('trigger_visual', { type: 'CARD_DRAW', card: card.text, player: player.name, deck: deckName });
+  executeCardAction(game, room, player, card, roll);
+}
+
 io.on('connection', (socket) => {
   socket.on('create_room', (room) => {
     socket.join(room);
     const savedGame = loadGame(room);
     if (savedGame) {
-      savedGame.players.forEach(p => { p.connected = false; });
+      savedGame.players.forEach(p => {
+        p.connected = false;
+        p.jailCards = p.jailCards || [];
+        if (p.getOutOfJailCards > 0 && p.jailCards.length === 0) {
+          if (p.getOutOfJailCards === 1) p.jailCards.push('chance');
+          else if (p.getOutOfJailCards >= 2) p.jailCards.push('chance', 'chest');
+        }
+        p.getOutOfJailCards = p.jailCards.length;
+      });
       savedGame.hostId = socket.id;
+      savedGame.gameStatus = savedGame.gameStatus || 'active';
+      savedGame.bankruptcyResolveQueue = savedGame.bankruptcyResolveQueue || [];
+      savedGame.bankruptcyAuctionQueue = savedGame.bankruptcyAuctionQueue || [];
+      savedGame.availableHouses = savedGame.availableHouses === undefined ? 32 : savedGame.availableHouses;
+      savedGame.availableHotels = savedGame.availableHotels === undefined ? 12 : savedGame.availableHotels;
+      
+      const filterDeck = (deck, type) => {
+        const heldByAny = savedGame.players.some(p => p.jailCards && p.jailCards.includes(type));
+        if (heldByAny && deck) {
+          return deck.filter(c => c.type !== 'jail_card');
+        }
+        return deck;
+      };
+      savedGame.chanceDeck = filterDeck(savedGame.chanceDeck, 'chance');
+      savedGame.chestDeck = filterDeck(savedGame.chestDeck, 'chest');
+      
       if (savedGame.pendingBuy === undefined) savedGame.pendingBuy = null;
       rooms[room] = savedGame;
       console.log(`[PERSIST] Room ${room} restored from save with ${savedGame.players.length} players`);
@@ -337,20 +704,23 @@ io.on('connection', (socket) => {
       rooms[room] = {
         hostId: socket.id,
         players: [],
+        gameStatus: 'lobby',
         currentTurn: 0,
         auction: { status: false, activePlayers: [] },
         boardState: {},
         logs: [],
         landedTile: null,
-        pendingBuy: null, // FIX #3
-        chanceDeck: createDeck('chance'),
-        chestDeck: createDeck('chest'),
+        pendingBuy: null,
+        chanceDeck: [],
+        chestDeck: [],
         hasRolled: false,
         bankruptcyResolveQueue: [],
+        bankruptcyAuctionQueue: [],
         availableHouses: 32,
         availableHotels: 12
-        // FIX #1: freeParkingPool removed
       };
+      rooms[room].chanceDeck = createDeck('chance', rooms[room]);
+      rooms[room].chestDeck = createDeck('chest', rooms[room]);
     }
   });
 
@@ -364,6 +734,8 @@ io.on('connection', (socket) => {
       const oldId = existingPlayer.id;
       existingPlayer.id = socket.id;
       existingPlayer.connected = true;
+      existingPlayer.jailCards = existingPlayer.jailCards || [];
+      existingPlayer.getOutOfJailCards = existingPlayer.jailCards.length;
       if (clientId && !existingPlayer.clientId) existingPlayer.clientId = clientId;
       for (const propId in game.boardState) {
         if (game.boardState[propId].owner === oldId) game.boardState[propId].owner = socket.id;
@@ -381,6 +753,12 @@ io.on('connection', (socket) => {
       if (game.auction && game.auction.status) socket.emit('auction_start', game.auction);
       return;
     }
+    
+    if (game.gameStatus !== 'lobby') {
+      socket.emit('action_error', 'Game has already started. New players cannot join.');
+      return;
+    }
+    
     let assignedColor = color;
     const takenColors = game.players.map(p => p.color);
     if (!assignedColor || takenColors.includes(assignedColor)) {
@@ -388,7 +766,7 @@ io.on('connection', (socket) => {
       const available = allColors.filter(c => !takenColors.includes(c));
       assignedColor = available.length > 0 ? available[0] : getRandomColor();
     }
-    const newPlayer = { id: socket.id, clientId: clientId || null, name, cash: 1500, position: 0, color: assignedColor, properties: [], inJail: false, jailTurns: 0, getOutOfJailCards: 0, consecutiveDoubles: 0, bankrupt: false, connected: true, creditorId: null };
+    const newPlayer = { id: socket.id, clientId: clientId || null, name, cash: 1500, position: 0, color: assignedColor, properties: [], inJail: false, jailTurns: 0, jailCards: [], getOutOfJailCards: 0, consecutiveDoubles: 0, bankrupt: false, connected: true, creditorId: null };
     game.players.push(newPlayer);
     socket.join(room);
     logEvent(game, `> ${name} joined the game.`);
@@ -398,21 +776,24 @@ io.on('connection', (socket) => {
   socket.on('roll_dice', ({ room }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     if (game.hasRolled) return;
     const raisingPlayer = game.players.find(p => p.needsToRaiseMoney && !p.bankrupt);
     if (raisingPlayer) return;
     if (!game.players || game.players.length === 0) return;
     const player = game.players[game.currentTurn];
     if (!player) return;
-    if (player.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; } // FIX #8
-    if (game.pendingBuy) { io.to(socket.id).emit('action_error', 'Resolve the property (buy or auction) before rolling.'); return; } // FIX #3
+    if (player.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; }
+    if (game.pendingBuy) { io.to(socket.id).emit('action_error', 'Resolve the property (buy or auction) before rolling.'); return; }
     if (player.bankrupt) { advanceTurn(game); return broadcastUpdate(room, game); }
-    const die1 = Math.floor(Math.random() * 6) + 1;
-    const die2 = Math.floor(Math.random() * 6) + 1;
+    
+    const die1 = rollDie(game);
+    const die2 = rollDie(game);
     const roll = die1 + die2;
     const isDouble = die1 === die2;
-    const startedInJail = player.inJail; // FIX #2
+    const startedInJail = player.inJail;
     io.to(room).emit('trigger_visual', { type: 'DICE_ROLL', dice: [die1, die2] });
+    
     if (player.inJail) {
       if (isDouble) {
         player.inJail = false; player.jailTurns = 0; player.consecutiveDoubles = 0;
@@ -420,11 +801,9 @@ io.on('connection', (socket) => {
       } else {
         player.jailTurns += 1;
         if (player.jailTurns >= 3) {
-          player.cash -= 50; // FIX #1 bail to bank
           player.inJail = false; player.jailTurns = 0;
           logEvent(game, `> ${player.name} paid ₹50 to leave Jail.`);
-          player.creditorId = null;
-          checkBankruptcy(game, room, player.id);
+          chargePlayer(game, room, player, 50, null);
         } else {
           logEvent(game, `> ${player.name} didn't roll doubles. Stays in Jail.`);
           game.hasRolled = true;
@@ -443,110 +822,25 @@ io.on('connection', (socket) => {
         player.consecutiveDoubles = 0;
       }
     }
-    const oldPos = player.position;
-    player.position = (player.position + roll) % 40;
-    if (player.position < oldPos && player.position !== 10) {
-      player.cash += 200;
-      logEvent(game, `> ${player.name} passed GO and collected ₹200.`);
-    }
-    function processTileLanding(game, room, player, roll) {
-      const tile = CITIES[player.position];
-      logEvent(game, `> ${player.name} landed on ${tile.name}.`);
-      game.landedTile = { tileId: tile.id, tileName: tile.name, tileColor: tile.color || null, tilePrice: tile.price || null, tileRent: tile.rent || null, tileType: tile.type || 'property', houseCost: tile.houseCost || (tile.price ? Math.floor(tile.price * 0.5) : null), playerName: player.name, playerColor: player.color, context: null };
-      const tileState = game.boardState[tile.id] || {};
-      if (tile.type === 'special' || tile.type === 'tax') {
-        if (tile.id === 30) {
-          player.position = 10; player.inJail = true; player.consecutiveDoubles = 0; game.hasRolled = true;
-          game.landedTile.context = 'jail';
-          logEvent(game, `> ${player.name} was sent to Jail.`);
-        } else if (tile.id === 20) {
-          logEvent(game, `> ${player.name} landed on Free Parking.`); // FIX #1: no payout
-        } else if (tile.type === 'tax') {
-          player.cash -= tile.cost; // FIX #1: to bank
-          game.landedTile.context = 'tax';
-          game.landedTile.amount = tile.cost;
-          logEvent(game, `> ${player.name} paid ₹${tile.cost} for ${tile.name}.`);
-          player.creditorId = null;
-          checkBankruptcy(game, room, player.id);
-        } else if (tile.name.includes("Chance") || tile.name.includes("Community Chest")) {
-          const deck = tile.name.includes("Chance") ? game.chanceDeck : game.chestDeck;
-          const card = deck.shift();
-          deck.push(card);
-          logEvent(game, `> ${player.name} drew: ${card.text}`);
-          const deckName = tile.name.includes("Chance") ? "CHANCE" : "COMMUNITY CHEST";
-          io.to(room).emit('trigger_visual', { type: 'CARD_DRAW', card: card.text, player: player.name, deck: deckName });
-          if (card.type === 'money') {
-            player.cash += card.amount; // FIX #1: to bank
-          } else if (card.type === 'go_jail') {
-            player.position = 10; player.inJail = true; game.hasRolled = true;
-          } else if (card.type === 'advance_go') {
-            player.position = 0; player.cash += 200;
-          } else if (card.type === 'jail_card') {
-            player.getOutOfJailCards += 1;
-          } else if (card.type === 'advance_mumbai') {
-            const beforeAdvance = player.position; // FIX #6
-            player.position = 39;
-            if (39 < beforeAdvance) { player.cash += 200; logEvent(game, `> ${player.name} passed GO and collected ₹200.`); }
-            processTileLanding(game, room, player, roll);
-            return;
-          } else if (card.type === 'go_back_3') {
-            player.position = (player.position - 3 + 40) % 40;
-            processTileLanding(game, room, player, roll);
-            return;
-          }
-          player.creditorId = null;
-          checkBankruptcy(game, room, player.id);
-        }
-      } else {
-        if (tileState.owner && tileState.owner !== player.id && !tileState.mortgaged) {
-          const owner = game.players.find(p => p.id === tileState.owner);
-          let rentAmount = 0;
-          if (tile.type === 'station') {
-            const ownedStations = owner.properties.filter(p => CITIES[p].type === 'station').length;
-            rentAmount = [25, 50, 100, 200][ownedStations - 1] || 25;
-          } else if (tile.type === 'utility') {
-            const ownedUtils = owner.properties.filter(p => CITIES[p].type === 'utility').length;
-            rentAmount = roll * (ownedUtils === 2 ? 10 : 4);
-          } else {
-            rentAmount = tile.rent ? tile.rent[tileState.houses || 0] : 0;
-            if ((tileState.houses || 0) === 0 && tile.color && COLOR_GROUPS[tile.color]) {
-              const ownsAll = COLOR_GROUPS[tile.color].every(propId => { const ps = game.boardState[propId]; return ps && ps.owner === owner.id; });
-              if (ownsAll) rentAmount *= 2;
-            }
-          }
-          player.cash -= rentAmount;
-          owner.cash += rentAmount;
-          logEvent(game, `> ${player.name} paid ₹${rentAmount} rent to ${owner.name}.`);
-          game.landedTile.context = 'rent_due';
-          game.landedTile.amount = rentAmount;
-          game.landedTile.ownerName = owner.name;
-          game.landedTile.ownerColor = owner.color;
-          io.to(room).emit('trigger_visual', { type: 'RENT', payer: player.name, receiver: owner.name, city: tile.name, amount: rentAmount, tileColor: tile.color || null, tilePrice: tile.price, tileRent: tile.rent || null, houseCost: tile.houseCost || (tile.price ? Math.floor(tile.price * 0.5) : null), tileType: tile.type || 'property', houses: tileState.houses || 0 });
-          player.creditorId = owner.id;
-          checkBankruptcy(game, room, player.id);
-        } else if (!tileState.owner && tile.price) {
-          game.landedTile.context = 'for_sale';
-          game.pendingBuy = { playerId: player.id, propertyId: tile.id }; // FIX #3
-          io.to(player.id).emit('prompt_buy', tile);
-        }
-      }
-    }
-    game.hasRolled = startedInJail ? true : !isDouble; // FIX #2
-    processTileLanding(game, room, player, roll);
+    
+    game.hasRolled = startedInJail ? true : !isDouble;
+    const targetPos = (player.position + roll) % 40;
+    movePlayerTo(game, room, player, targetPos, true, { roll });
     broadcastUpdate(room, game);
   });
 
   socket.on('end_turn', ({ room }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const raisingPlayer = game.players.find(p => p.needsToRaiseMoney && !p.bankrupt);
     if (raisingPlayer) return;
     if (!game.players || game.players.length === 0) return;
     const player = game.players[game.currentTurn];
     if (!player) return;
-    if (player.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; } // FIX #8
-    if (game.pendingBuy) { io.to(socket.id).emit('action_error', 'You must buy or auction the property first.'); return; } // FIX #3
-    if (!game.hasRolled) { io.to(socket.id).emit('action_error', 'You still have a roll to take.'); return; } // FIX #4
+    if (player.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; }
+    if (game.pendingBuy) { io.to(socket.id).emit('action_error', 'You must buy or auction the property first.'); return; }
+    if (!game.hasRolled) { io.to(socket.id).emit('action_error', 'You still have a roll to take.'); return; }
     advanceTurn(game);
     logEvent(game, `> It is now ${game.players[game.currentTurn].name}'s turn.`);
     broadcastUpdate(room, game);
@@ -555,10 +849,11 @@ io.on('connection', (socket) => {
   socket.on('pay_bail', ({ room }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
     if (player && player.inJail) {
       if (player.cash >= 50) {
-        player.cash -= 50; // FIX #1 to bank
+        player.cash -= 50;
         player.inJail = false; player.jailTurns = 0;
         logEvent(game, `> ${player.name} paid ₹50 bail.`);
         broadcastUpdate(room, game);
@@ -578,9 +873,17 @@ io.on('connection', (socket) => {
   socket.on('use_jail_card', ({ room }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
-    if (player && player.inJail && player.getOutOfJailCards > 0) {
-      player.getOutOfJailCards -= 1; player.inJail = false; player.jailTurns = 0;
+    if (player && player.inJail && player.jailCards && player.jailCards.length > 0) {
+      const deckType = player.jailCards.shift();
+      player.getOutOfJailCards = player.jailCards.length;
+      player.inJail = false; player.jailTurns = 0;
+      
+      const deck = deckType === 'chance' ? game.chanceDeck : game.chestDeck;
+      const card = (deckType === 'chance' ? chanceDeckMaster : chestDeckMaster).find(c => c.type === 'jail_card');
+      if (card) deck.push(card);
+      
       logEvent(game, `> ${player.name} used a Get Out of Jail Free card.`);
       broadcastUpdate(room, game);
     }
@@ -589,17 +892,17 @@ io.on('connection', (socket) => {
   socket.on('buy_property', ({ room, propertyId }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
     if (!player) return;
     const tile = CITIES[propertyId];
     if (!tile) return;
-    if (!game.pendingBuy || game.pendingBuy.playerId !== socket.id || game.pendingBuy.propertyId !== propertyId) { // FIX B
+    if (!game.pendingBuy || game.pendingBuy.playerId !== socket.id || game.pendingBuy.propertyId !== propertyId) {
       io.to(socket.id).emit('action_error', 'You can only buy the property you landed on.');
       return;
     }
     if (!game.boardState[propertyId]?.owner) {
       if (player.cash >= tile.price) {
-        player.cash -= tile.price;
         player.properties.push(propertyId);
         if (!game.boardState[propertyId]) game.boardState[propertyId] = {};
         game.boardState[propertyId].owner = player.id;
@@ -608,20 +911,20 @@ io.on('connection', (socket) => {
         logEvent(game, `> ${player.name} bought ${tile.name} for ₹${tile.price}.`);
         game.landedTile = null; game.pendingBuy = null;
         io.to(room).emit('trigger_visual', { type: 'BUY', player: player.name, card: tile.name, cost: tile.price });
+        chargePlayer(game, room, player, tile.price, null);
         broadcastUpdate(room, game);
       } else {
         const assets = calculateAssets(game, player);
         if (player.cash + assets >= tile.price) {
-          player.cash -= tile.price;
           player.properties.push(propertyId);
           if (!game.boardState[propertyId]) game.boardState[propertyId] = {};
           game.boardState[propertyId].owner = player.id;
           game.boardState[propertyId].houses = 0;
           game.boardState[propertyId].mortgaged = false;
-          player.creditorId = null; game.landedTile = null; game.pendingBuy = null;
-          logEvent(game, `> ${player.name} bought ${tile.name} on credit (debt: ₹${-player.cash}).`);
+          game.landedTile = null; game.pendingBuy = null;
           io.to(room).emit('trigger_visual', { type: 'BUY', player: player.name, card: tile.name, cost: tile.price });
-          checkBankruptcy(game, room, player.id);
+          chargePlayer(game, room, player, tile.price, null);
+          broadcastUpdate(room, game);
         } else {
           io.to(player.id).emit('action_error', `You cannot afford ${tile.name}. Even after mortgaging everything, you would be short.`);
         }
@@ -632,6 +935,7 @@ io.on('connection', (socket) => {
   socket.on('manage_property', ({ room, action, propertyId }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
     if (!player) return;
     const tile = CITIES[propertyId];
@@ -660,7 +964,7 @@ io.on('connection', (socket) => {
       if (!isHotel && game.availableHouses <= 0) { io.to(player.id).emit('action_error', 'No houses left in the bank!'); return; }
       const cost = tile.houseCost || (tile.price / 2);
       if (player.cash >= cost && currentHouses < 5) {
-        player.cash -= cost;
+        chargePlayer(game, room, player, cost, null);
         state.houses = currentHouses + 1;
         if (isHotel) { game.availableHotels -= 1; game.availableHouses += 4; } else { game.availableHouses -= 1; }
         logEvent(game, `> ${player.name} built on ${tile.name}.`);
@@ -678,12 +982,11 @@ io.on('connection', (socket) => {
       const sellValue = Math.floor(houseCost / 2);
       const isHotel = (state.houses === 5);
       if (isHotel && game.availableHouses < 4) { io.to(player.id).emit('action_error', `Not enough houses in bank to replace hotel on ${tile.name}.`); return; }
-      player.cash += sellValue;
       state.houses -= 1;
       if (isHotel) { game.availableHotels += 1; game.availableHouses -= 4; } else { game.availableHouses += 1; }
       logEvent(game, `> ${player.name} sold a ${isHotel ? 'hotel' : 'house'} on ${tile.name} for ₹${sellValue}.`);
+      gainCash(game, room, player, sellValue);
       broadcastUpdate(room, game);
-      if (isRaisingMoney && player.cash >= 0) { player.needsToRaiseMoney = false; player.debtAmount = 0; player.creditorId = null; logEvent(game, `> ${player.name} raised enough money!`); io.to(player.id).emit('raise_money_resolved'); broadcastUpdate(room, game); }
     } else if (action === 'MORTGAGE' && !state.mortgaged && (state.houses || 0) === 0) {
       const colorGroup = COLOR_GROUPS[tile.color];
       if (colorGroup) {
@@ -691,20 +994,25 @@ io.on('connection', (socket) => {
         if (hasHouses) { io.to(player.id).emit('action_error', `You must sell all buildings in this color set before mortgaging.`); return; }
       }
       const value = Math.floor(tile.price / 2);
-      player.cash += value;
       state.mortgaged = true;
       logEvent(game, `> ${player.name} mortgaged ${tile.name}.`);
+      gainCash(game, room, player, value);
       broadcastUpdate(room, game);
-      if (isRaisingMoney && player.cash >= 0) { player.needsToRaiseMoney = false; player.debtAmount = 0; player.creditorId = null; logEvent(game, `> ${player.name} raised enough money!`); io.to(player.id).emit('raise_money_resolved'); broadcastUpdate(room, game); }
     } else if (action === 'UNMORTGAGE' && state.mortgaged) {
       const cost = Math.floor((tile.price / 2) * 1.1);
-      if (player.cash >= cost) { player.cash -= cost; state.mortgaged = false; logEvent(game, `> ${player.name} unmortgaged ${tile.name}.`); broadcastUpdate(room, game); }
+      if (player.cash >= cost) {
+        chargePlayer(game, room, player, cost, null);
+        state.mortgaged = false;
+        logEvent(game, `> ${player.name} unmortgaged ${tile.name}.`);
+        broadcastUpdate(room, game);
+      }
     }
   });
 
   socket.on('declare_bankruptcy', ({ room }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
     if (!player || !player.needsToRaiseMoney) return;
     declareBankruptcy(game, room, player);
@@ -712,7 +1020,9 @@ io.on('connection', (socket) => {
 
   socket.on('resolve_transferred_mortgage', ({ room, action }) => {
     const game = rooms[room];
-    if (!game || !game.bankruptcyResolveQueue || game.bankruptcyResolveQueue.length === 0) return;
+    if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
+    if (!game.bankruptcyResolveQueue || game.bankruptcyResolveQueue.length === 0) return;
     const currentResolution = game.bankruptcyResolveQueue[0];
     if (currentResolution.creditorId !== socket.id) return;
     const player = game.players.find(p => p.id === socket.id);
@@ -722,11 +1032,11 @@ io.on('connection', (socket) => {
     const mortgageValue = Math.floor(tile.price / 2);
     if (action === 'UNMORTGAGE') {
       const cost = Math.floor(mortgageValue * 1.1);
-      if (player.cash >= cost) { player.cash -= cost; state.mortgaged = false; logEvent(game, `> ${player.name} unmortgaged transferred property ${tile.name} for ₹${cost}.`); }
+      if (player.cash >= cost) { chargePlayer(game, room, player, cost, null); state.mortgaged = false; logEvent(game, `> ${player.name} unmortgaged transferred property ${tile.name} for ₹${cost}.`); }
       else { socket.emit('action_error', `You cannot afford the ₹${cost} to unmortgage this property.`); return; }
     } else if (action === 'KEEP_MORTGAGED') {
       const fee = Math.floor(mortgageValue * 0.1);
-      if (player.cash >= fee) { player.cash -= fee; state.mortgaged = true; logEvent(game, `> ${player.name} paid ₹${fee} fee to keep ${tile.name} mortgaged.`); }
+      if (player.cash >= fee) { chargePlayer(game, room, player, fee, null); state.mortgaged = true; logEvent(game, `> ${player.name} paid ₹${fee} fee to keep ${tile.name} mortgaged.`); }
       else { socket.emit('action_error', `You cannot afford the ₹${fee} fee to keep this property mortgaged.`); return; }
     }
     game.bankruptcyResolveQueue.shift();
@@ -743,6 +1053,7 @@ io.on('connection', (socket) => {
     const { room, targetId } = payload || {};
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const initiator = game.players.find(p => p.id === socket.id);
     const target = game.players.find(p => p.id === targetId);
     if (!initiator || !target) return;
@@ -758,20 +1069,37 @@ io.on('connection', (socket) => {
     const { room, initiatorId } = payload || {};
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const target = game.players.find(p => p.id === socket.id);
     const initiator = game.players.find(p => p.id === initiatorId);
     if (!initiator || !target) return;
     const checked = validateTrade(game, initiator, target, payload);
     if (checked.error) { io.to(socket.id).emit('action_error', `Trade failed: ${checked.error}`); io.to(initiatorId).emit('action_error', `Trade failed: ${checked.error}`); return; }
     const { oProps, rProps, oCash, rCash, oJail, rJail } = checked;
-    initiator.cash += rCash - oCash;
-    target.cash += oCash - rCash;
+    
+    if (oCash > rCash) {
+      chargePlayer(game, room, initiator, oCash - rCash, target.id);
+    } else if (rCash > oCash) {
+      chargePlayer(game, room, target, rCash - oCash, initiator.id);
+    }
+    
     oProps.forEach(id => { initiator.properties = initiator.properties.filter(pid => pid !== id); target.properties.push(id); game.boardState[id].owner = target.id; });
     rProps.forEach(id => { target.properties = target.properties.filter(pid => pid !== id); initiator.properties.push(id); game.boardState[id].owner = initiator.id; });
-    initiator.getOutOfJailCards = (initiator.getOutOfJailCards || 0) - oJail + rJail;
-    target.getOutOfJailCards = (target.getOutOfJailCards || 0) + oJail - rJail;
-    // FIX G: mortgaged property received owes 10% interest to the bank.
-    const chargeMortgageInterest = (receiver, propIds) => { propIds.forEach(id => { if (game.boardState[id]?.mortgaged) { const fee = Math.floor((CITIES[id].price / 2) * 0.1); receiver.cash -= fee; logEvent(game, `> ${receiver.name} paid ₹${fee} mortgage interest on ${CITIES[id].name}.`); } }); };
+    
+    initiator.jailCards = initiator.jailCards || [];
+    target.jailCards = target.jailCards || [];
+    for (let i = 0; i < oJail; i++) {
+      const card = initiator.jailCards.shift();
+      if (card) target.jailCards.push(card);
+    }
+    for (let i = 0; i < rJail; i++) {
+      const card = target.jailCards.shift();
+      if (card) initiator.jailCards.push(card);
+    }
+    initiator.getOutOfJailCards = initiator.jailCards.length;
+    target.getOutOfJailCards = target.jailCards.length;
+    
+    const chargeMortgageInterest = (receiver, propIds) => { propIds.forEach(id => { if (game.boardState[id]?.mortgaged) { const fee = Math.floor((CITIES[id].price / 2) * 0.1); chargePlayer(game, room, receiver, fee, null); } }); };
     chargeMortgageInterest(target, oProps);
     chargeMortgageInterest(initiator, rProps);
     logEvent(game, `> ${target.name} accepted ${initiator.name}'s trade.`);
@@ -784,18 +1112,35 @@ io.on('connection', (socket) => {
   socket.on('decline_trade', ({ room, initiatorId }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const target = game.players.find(p => p.id === socket.id);
     const initiator = game.players.find(p => p.id === initiatorId);
     logEvent(game, `> ${target ? target.name : 'Player'} declined the trade.`);
     io.to(room).emit('trigger_visual', { type: 'TRADE_DECLINED', initiatorName: initiator ? initiator.name : "Player", targetName: target ? target.name : "Player" });
   });
 
+  socket.on('start_game', ({ room }) => {
+    const game = rooms[room];
+    if (!game) return;
+    if (game.hostId !== socket.id) { io.to(socket.id).emit('action_error', 'Only the TV/Host can start the game.'); return; }
+    if (game.gameStatus !== 'lobby') { io.to(socket.id).emit('action_error', 'Game has already started.'); return; }
+    if (game.players.length < 2) { io.to(socket.id).emit('action_error', 'At least 2 players are required to start the game.'); return; }
+    
+    game.gameStatus = 'active';
+    const startingIdx = determineStartingPlayer(game);
+    game.currentTurn = startingIdx;
+    logEvent(game, `> The game has started! It is ${game.players[startingIdx].name}'s turn.`);
+    broadcastUpdate(room, game);
+  });
+
   socket.on('start_auction', ({ room, propertyId }) => {
     const game = rooms[room];
     if (!game) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
+    if (game.auction?.status) { io.to(socket.id).emit('action_error', 'An auction is already in progress.'); return; }
     const tile = CITIES[propertyId];
     if (!tile || !tile.price) return;
-    if (game.boardState[propertyId]?.owner) { io.to(socket.id).emit('action_error', 'That property is already owned.'); return; } // FIX A
+    if (game.boardState[propertyId]?.owner) { io.to(socket.id).emit('action_error', 'That property is already owned.'); return; }
     const currentPlayer = game.players[game.currentTurn];
     if (!currentPlayer || currentPlayer.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; }
     if (game.pendingBuy && game.pendingBuy.propertyId !== propertyId) { io.to(socket.id).emit('action_error', 'You can only auction the property you landed on.'); return; }
@@ -804,41 +1149,49 @@ io.on('connection', (socket) => {
     game.landedTile = null; game.pendingBuy = null;
     logEvent(game, `> Auction started for ${tile.name}.`);
     io.to(room).emit('auction_start', game.auction);
-    startAuctionTimer(room); // FIX C
+    startAuctionTimer(room);
     broadcastUpdate(room, game);
   });
 
   socket.on('place_bid', ({ room, amount }) => {
     const game = rooms[room];
     if (!game || !game.auction?.status) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
     if (!player) return;
     if (!game.auction.activePlayers.includes(player.id)) return;
     if (game.auction.highestBidder === player.id) return;
-    const inc = Math.floor(Number(amount)); // FIX E
-    if (!Number.isFinite(inc) || inc <= 0) { io.to(player.id).emit('action_error', 'Invalid bid amount.'); return; }
-    const newBid = game.auction.currentBid + inc;
-    if (player.cash < newBid) { io.to(player.id).emit('action_error', `You can't afford ₹${newBid}. You have ₹${player.cash}.`); return; }
-    game.auction.currentBid = newBid;
+    
+    const bid = Math.floor(Number(amount));
+    if (!Number.isFinite(bid) || bid <= 0) { io.to(player.id).emit('action_error', 'Bid must be a positive integer.'); return; }
+    if (game.auction.currentBid === 0) {
+      if (bid < 1) { io.to(player.id).emit('action_error', 'Opening bid must be at least ₹1.'); return; }
+    } else {
+      if (bid <= game.auction.currentBid) { io.to(player.id).emit('action_error', `Bid must be greater than current bid of ₹${game.auction.currentBid}.`); return; }
+    }
+    if (bid > player.cash) { io.to(player.id).emit('action_error', `Bid cannot exceed your cash of ₹${player.cash}.`); return; }
+    
+    game.auction.currentBid = bid;
     game.auction.highestBidder = player.id;
     game.auction.highestBidderName = player.name;
-    logEvent(game, `> ${player.name} bid ₹${newBid}.`);
+    logEvent(game, `> ${player.name} bid ₹${bid}.`);
     io.to(room).emit('auction_update', game.auction);
-    startAuctionTimer(room); // FIX C
+    startAuctionTimer(room);
     broadcastUpdate(room, game);
   });
 
   socket.on('withdraw_auction', ({ room }) => {
     const game = rooms[room];
     if (!game || !game.auction?.status) return;
+    if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
     const player = game.players.find(p => p.id === socket.id);
     if (!player) return;
     if (!game.auction.activePlayers.includes(player.id)) return;
-    if (game.auction.highestBidder === player.id) { io.to(player.id).emit('action_error', "You're the highest bidder and can't withdraw."); return; } // FIX D
+    if (game.auction.highestBidder === player.id) { io.to(player.id).emit('action_error', "You're the highest bidder and can't withdraw."); return; }
     if (game.auction.activePlayers.length <= 1) { io.to(player.id).emit('action_error', 'You are the last bidder - you must take this property.'); return; }
     game.auction.activePlayers = game.auction.activePlayers.filter(id => id !== socket.id);
     logEvent(game, `> ${player.name} withdrew from the auction.`);
-    if (game.auction.activePlayers.length === 1) { endAuction(game, room); return; } // FIX C/D
+    if (game.auction.activePlayers.length === 1) { endAuction(game, room); return; }
     io.to(room).emit('auction_update', game.auction);
     broadcastUpdate(room, game);
   });
@@ -875,4 +1228,7 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(3001, () => console.log("Game Engine Running on port 3001"));
+if (require.main === module) {
+  server.listen(process.env.PORT || 3001, () => console.log("Game Engine Running on port " + (process.env.PORT || 3001)));
+}
+module.exports = { app, server, io, rooms, chanceDeckMaster, chestDeckMaster, rollDie, determineStartingPlayer, chargePlayer, gainCash, calculateAssets, checkBankruptcy, declareBankruptcy, endAuction, validateTrade, createDeck, movePlayerTo, executeCardAction, drawAndResolveCard };

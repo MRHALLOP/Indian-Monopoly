@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect } from 'react';
 import Confetti from 'react-confetti';
 import * as THREE from 'three';
 import { CITIES } from '../constants';
