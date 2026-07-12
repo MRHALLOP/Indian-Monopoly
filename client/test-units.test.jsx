@@ -766,4 +766,125 @@ describe('Indian Monopoly Unit Tests', () => {
 
     unmount();
   });
+
+  // ------------------------------------------------------------------
+  // 11. Reconnection Reclaim panel / Button absence
+  // ------------------------------------------------------------------
+  test('ControllerComponent does not render reclaim list or Join Previous Game button', () => {
+    const mockSocket = {
+      id: 'p1',
+      on: vi.fn(),
+      off: vi.fn(),
+      emit: vi.fn(),
+    };
+
+    // Override location search to pass room
+    Object.defineProperty(window, 'location', {
+      value: { search: '?room=ABCD' },
+      writable: true,
+    });
+
+    const { queryByText } = render(
+      <ControllerComponent socket={mockSocket} />
+    );
+
+    // Verify "Join Previous Game" button does not exist
+    expect(queryByText(/Join Previous Game/i)).toBeNull();
+    expect(queryByText(/reclaim disconnected/i)).toBeNull();
+  });
+
+  // ------------------------------------------------------------------
+  // 12. Auto-reconnect limit (once per socket connection)
+  // ------------------------------------------------------------------
+  test('ControllerComponent auto-reconnects exactly once per socket connection', async () => {
+    const socketListeners = {};
+    const mockSocket = {
+      id: 'mock-socket-id-999',
+      on: vi.fn((event, callback) => {
+        socketListeners[event] = callback;
+      }),
+      off: vi.fn(),
+      emit: vi.fn(),
+    };
+
+    // Prepare local storage
+    localStorage.setItem('monopoly_name_ABCD', 'Aarav');
+    localStorage.setItem('monopoly_color_ABCD', '#ef4444');
+    localStorage.setItem('monopoly_client_id', 'client-id-uuid');
+
+    // Override location search to pass room
+    Object.defineProperty(window, 'location', {
+      value: { search: '?room=ABCD' },
+      writable: true,
+    });
+
+    const { unmount } = render(
+      <ControllerComponent socket={mockSocket} />
+    );
+
+    // Provide game update in lobby view
+    const lobbyState = {
+      room: 'ABCD',
+      gameStatus: 'lobby',
+      players: [
+        { id: 'p2', name: 'Aarav', color: '#ef4444', connected: false }
+      ],
+      boardState: {},
+    };
+
+    await act(async () => {
+      socketListeners['game_update'](lobbyState);
+    });
+
+    // Expect join_game emitted once
+    expect(mockSocket.emit).toHaveBeenCalledWith('join_game', expect.objectContaining({
+      room: 'ABCD',
+      name: 'Aarav',
+      color: '#ef4444',
+      clientId: 'client-id-uuid'
+    }));
+
+    // Reset mock history to verify it is NOT called again on subsequent updates
+    mockSocket.emit.mockClear();
+
+    // Fire another state update
+    await act(async () => {
+      socketListeners['game_update']({ ...lobbyState });
+    });
+
+    // Should not emit again
+    expect(mockSocket.emit).not.toHaveBeenCalledWith('join_game', expect.any(Object));
+
+    unmount();
+  });
+
+  // ------------------------------------------------------------------
+  // 13. Host error copy check
+  // ------------------------------------------------------------------
+  test('BoardComponent displays host error copy without advising storage clearing', async () => {
+    const socketListeners = {};
+    const mockSocket = {
+      id: 'host-socket',
+      on: vi.fn((event, callback) => {
+        socketListeners[event] = callback;
+      }),
+      off: vi.fn(),
+      emit: vi.fn(),
+    };
+
+    const { container, queryByText } = render(
+      <BoardComponent socket={mockSocket} room="ABCD" />
+    );
+
+    // Trigger host_error event
+    await act(async () => {
+      socketListeners['host_error']('Room already has an active host.');
+    });
+
+    // Check host error display
+    expect(queryByText(/Host Access Denied/i)).toBeInTheDocument();
+    expect(container.innerHTML).toContain('Do not clear your browser storage');
+    expect(container.innerHTML).not.toContain('clear your browser storage and reload');
+  });
 });
+

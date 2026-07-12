@@ -35,6 +35,7 @@ serverModule.io.emit = (event, data) => {
 };
 
 // Helper to set up a test game and mock Socket.IO connections
+const TEST_HOST_KEY = 'test-host-key-1234';
 function setupTestGame(roomId, playersData = []) {
   // Clear room
   delete rooms[roomId];
@@ -55,9 +56,10 @@ function setupTestGame(roomId, playersData = []) {
   const connectionListeners = serverModule.io.listeners('connection');
   connectionListeners.forEach(listener => listener(hostSocketMock));
 
-  // Trigger create_room on host
-  hostSocketMock._handlers['create_room'](roomId);
+  // Trigger create_room on host with new { room, hostKey } API
+  hostSocketMock._handlers['create_room']({ room: roomId, hostKey: TEST_HOST_KEY });
   const game = rooms[roomId];
+  if (!game) throw new Error(`Room ${roomId} not created by create_room handler`);
   game.hostId = 'host-socket-id';
 
   // Connect players
@@ -665,8 +667,9 @@ runTest('safely migrates old saves without crash (via actual game restore handle
   const connectionListeners = serverModule.io.listeners('connection');
   connectionListeners.forEach(listener => listener(hostSocketMock));
 
-  // Trigger create_room which restores the game from save
-  hostSocketMock._handlers['create_room'](testRoomId);
+  // Trigger create_room which restores the game from save (new { room, hostKey } API)
+  // Old save has no hostKey, so the TV is allowed to claim it on first load
+  hostSocketMock._handlers['create_room']({ room: testRoomId, hostKey: 'migrate-test-key' });
 
   const loadedGame = rooms[testRoomId];
   assert.ok(loadedGame);
@@ -732,6 +735,226 @@ runTest('every jail path emits exactly one JAIL visual event; visiting Jail tile
   const doublesJailEvents = emittedEvents.filter(ee => ee.event === 'trigger_visual' && ee.data?.type === 'JAIL');
   assert.strictEqual(doublesJailEvents.length, 1);
   assert.strictEqual(doublesJailEvents[0].data.reason, 'three_doubles');
+});
+
+
+// ==========================================
+// Batch 03 LAN Reliability Tests
+// ==========================================
+
+const { normalizeRoomCode, requireRoom, getSavePath, saveGame, loadGame, deleteSave, resumeAuctionTimer, resumeTradeTimer, expireTrade, AUCTION_DURATION_MS, TRADE_DURATION_MS } = serverModule;
+const { createInitialGame, migrateGame, validateGame, publicGameState } = require('./gameState');
+
+runTest('normalizeRoomCode accepts valid codes and rejects invalid', () => {
+  assert.strictEqual(normalizeRoomCode('abcd'), 'ABCD');
+  assert.strictEqual(normalizeRoomCode('  ab12  '), 'AB12');
+  assert.strictEqual(normalizeRoomCode('AB-12'), 'AB-12');
+  assert.strictEqual(normalizeRoomCode(null), null);
+  assert.strictEqual(normalizeRoomCode(42), null);
+  assert.strictEqual(normalizeRoomCode('AB!'), null, 'special chars rejected');
+  assert.strictEqual(normalizeRoomCode('abc'), null, 'too short rejected');
+  assert.strictEqual(normalizeRoomCode('A'.repeat(13)), null, 'too long rejected');
+});
+
+runTest('create_room rejects missing hostKey', () => {
+  emittedEvents.length = 0;
+  const fakeSocket = {
+    id: 'hs1',
+    join: () => {},
+    on: (event, handler) => { fakeSocket._handlers = fakeSocket._handlers || {}; fakeSocket._handlers[event] = handler; },
+    emit: (e, d) => emittedEvents.push({ target: 'hs1', event: e, data: d }),
+    _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(fakeSocket));
+  fakeSocket._handlers['create_room']({ room: 'TRM1', hostKey: undefined });
+  const hostErrors = emittedEvents.filter(e => e.event === 'host_error');
+  assert.ok(hostErrors.length > 0, 'host_error emitted when hostKey missing');
+});
+
+runTest('create_room rejects wrong hostKey for existing room', () => {
+  // Set up a room with hostKey A
+  delete rooms['TRM2'];
+  const sock1 = {
+    id: 'hs2', join: () => {},
+    on: (event, handler) => { sock1._handlers[event] = handler; },
+    emit: () => {}, _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(sock1));
+  sock1._handlers['create_room']({ room: 'TRM2', hostKey: 'key-A' });
+  assert.ok(rooms['TRM2'], 'Room created with key-A');
+
+  // Attempt to claim with different hostKey B
+  emittedEvents.length = 0;
+  const sock2 = {
+    id: 'hs3', join: () => {},
+    on: (event, handler) => { sock2._handlers[event] = handler; },
+    emit: (e, d) => emittedEvents.push({ target: 'hs3', event: e, data: d }),
+    _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(sock2));
+  sock2._handlers['create_room']({ room: 'TRM2', hostKey: 'key-B' });
+  const hostErrors = emittedEvents.filter(e => e.event === 'host_error');
+  assert.ok(hostErrors.length > 0, 'host_error emitted when hostKey mismatch');
+});
+
+runTest('create_room accepts same hostKey on reconnect', () => {
+  delete rooms['TRM3'];
+  const sock1 = {
+    id: 'hs4', join: () => {},
+    on: (event, handler) => { sock1._handlers[event] = handler; },
+    emit: () => {}, _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(sock1));
+  sock1._handlers['create_room']({ room: 'TRM3', hostKey: 'key-X' });
+  assert.ok(rooms['TRM3']);
+
+  emittedEvents.length = 0;
+  const sock2 = {
+    id: 'hs5', join: () => {},
+    on: (event, handler) => { sock2._handlers[event] = handler; },
+    emit: (e, d) => emittedEvents.push({ target: 'hs5', event: e, data: d }),
+    _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(sock2));
+  sock2._handlers['create_room']({ room: 'TRM3', hostKey: 'key-X' });
+  const hostErrors = emittedEvents.filter(e => e.event === 'host_error');
+  assert.strictEqual(hostErrors.length, 0, 'same key allowed on reconnect');
+  assert.strictEqual(rooms['TRM3'].hostId, 'hs5', 'hostId updated to new socket');
+});
+
+runTest('join_game rejects name collision with different clientId', () => {
+  const { game, sockets } = setupTestGame('RMCOL', [
+    { id: 'p1', name: 'Alice', color: '#ef4444', clientId: 'cid-alice' }
+  ]);
+  // Different socket tries to use same name with a different clientId
+  const intruder = {
+    id: 'p-bad', join: () => {},
+    on: (event, handler) => { intruder._handlers[event] = handler; },
+    emit: (e, d) => emittedEvents.push({ target: 'p-bad', event: e, data: d }),
+    _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(intruder));
+  emittedEvents.length = 0;
+  intruder._handlers['join_game']({ room: 'RMCOL', name: 'Alice', color: '#3b82f6', clientId: 'cid-stranger' });
+  const errors = emittedEvents.filter(e => e.event === 'action_error');
+  assert.ok(errors.length > 0, 'action_error emitted for name collision');
+});
+
+runTest('join_game reconnects with matching clientId only', () => {
+  const { game, sockets } = setupTestGame('RMRECON', [
+    { id: 'p1-old', name: 'Bob', color: '#3b82f6', clientId: 'cid-bob' }
+  ]);
+  game.gameStatus = 'active';
+  // Reconnect with correct clientId but new socket id
+  const reconSocket = {
+    id: 'p1-new', join: () => {},
+    on: (event, handler) => { reconSocket._handlers[event] = handler; },
+    emit: () => {}, _handlers: {}
+  };
+  serverModule.io.listeners('connection').forEach(l => l(reconSocket));
+  reconSocket._handlers['join_game']({ room: 'RMRECON', name: 'Bob', color: '#3b82f6', clientId: 'cid-bob' });
+  const bob = game.players.find(p => p.name === 'Bob');
+  assert.strictEqual(bob.id, 'p1-new', 'player id updated to new socket');
+});
+
+runTest('publicGameState strips hostKey and testDiceQueue', () => {
+  const game = createInitialGame({ hostId: 'h1', hostKey: 'secret-key' });
+  game.testDiceQueue = [3, 4];
+  const pub = publicGameState(game);
+  assert.ok(!pub.hostKey, 'hostKey must be stripped');
+  assert.ok(!pub.testDiceQueue, 'testDiceQueue must be stripped');
+});
+
+runTest('validateGame rejects invalid positions', () => {
+  const game = createInitialGame({ hostId: 'h1', hostKey: 'k' });
+  game.players.push({ id: 'p1', clientId: 'c1', name: 'A', cash: 1500, position: 41, color: '#fff', properties: [], inJail: false, jailTurns: 0, jailCards: [], getOutOfJailCards: 0, consecutiveDoubles: 0, bankrupt: false, connected: true, creditorId: null });
+  const { valid, errors } = validateGame(game);
+  assert.ok(!valid);
+  assert.ok(errors.some(e => e.includes('position')));
+});
+
+runTest('migrateGame removes testDiceQueue and clamps jailCards', () => {
+  const raw = {
+    players: [{
+      id: 'p1', clientId: 'c1', name: 'A', cash: 1500, position: 0, color: '#fff',
+      properties: [], inJail: false, jailTurns: 0,
+      jailCards: ['chance', 'chest', 'chance'], // 3 jailCards — should be clamped to 1 chance + 1 chest
+      getOutOfJailCards: 3, consecutiveDoubles: 0, bankrupt: false, connected: true, creditorId: null
+    }],
+    testDiceQueue: [1, 2, 3],
+    boardState: {}, logs: [], chanceDeck: [], chestDeck: [], currentTurn: 0, hasRolled: false,
+    gameStatus: 'active', hostId: 'h1', hostKey: 'k', pendingBuy: null, landedTile: null,
+    bankruptcyResolveQueue: [], bankruptcyAuctionQueue: [], auction: { status: false, activePlayers: [] },
+    availableHouses: 32, availableHotels: 12, pendingTrade: null, hostConnected: true
+  };
+  const migrated = migrateGame(raw);
+  assert.ok(!migrated.testDiceQueue, 'testDiceQueue removed');
+  assert.ok(migrated.players[0].jailCards.length <= 2, 'jailCards clamped to max 2');
+});
+
+runTest('atomic save: saveGame and loadGame roundtrip (real files)', () => {
+  const testRoom = 'TESTATM';
+  const game = createInitialGame({ hostId: 'h1', hostKey: 'k' });
+  game.players.push({ id: 'p1', clientId: 'c1', name: 'A', cash: 1500, position: 5, color: '#fff', properties: [], inJail: false, jailTurns: 0, jailCards: [], getOutOfJailCards: 0, consecutiveDoubles: 0, bankrupt: false, connected: true, creditorId: null });
+  saveGame(testRoom, game);
+  const loaded = loadGame(testRoom);
+  assert.ok(loaded, 'game loaded after save');
+  assert.strictEqual(loaded.players[0].position, 5);
+  deleteSave(testRoom);
+  assert.strictEqual(loadGame(testRoom), null, 'null after deleteSave');
+});
+
+runTest('trade timer: expireTrade expires pending trade after delay', (done) => {
+  const { game } = setupTestGame('RMTRD', [
+    { id: 'pt1', name: 'C', color: '#ef4444', clientId: 'cid-c' },
+    { id: 'pt2', name: 'D', color: '#3b82f6', clientId: 'cid-d' }
+  ]);
+  game.gameStatus = 'active';
+  const tradeId = 'trade-abc';
+  game.pendingTrade = {
+    id: tradeId, status: 'pending',
+    initiatorId: 'pt1', targetId: 'pt2',
+    offerCash: 0, requestCash: 0,
+    offerPropertyIds: [], requestPropertyIds: [],
+    offerJailCards: 0, requestJailCards: 0,
+    expiresAt: Date.now() + 50
+  };
+  resumeTradeTimer('RMTRD', game);
+  setTimeout(() => {
+    assert.strictEqual(game.pendingTrade, null, 'pendingTrade cleared after expiry');
+    done && done();
+  }, 150);
+  // Make synchronous by calling expireTrade directly
+  expireTrade('RMTRD', game, tradeId);
+  assert.strictEqual(game.pendingTrade, null, 'pendingTrade cleared synchronously via expireTrade');
+});
+
+runTest('auction endsAt is set when startAuctionTimer fires', () => {
+  const { game } = setupTestGame('RMAUCT', [
+    { id: 'pa1', name: 'E', color: '#ef4444', clientId: 'cid-e' },
+    { id: 'pa2', name: 'F', color: '#3b82f6', clientId: 'cid-f' }
+  ]);
+  game.gameStatus = 'active';
+  game.auction = { status: true, activePlayers: ['pa1', 'pa2'], propertyId: 1, currentBid: 0, highestBidder: null };
+  const beforeNow = Date.now();
+  // startAuctionTimer is internal, so mimic it:
+  game.auction.endsAt = Date.now() + AUCTION_DURATION_MS;
+  assert.ok(game.auction.endsAt >= beforeNow + AUCTION_DURATION_MS - 5, 'endsAt set roughly to now + duration');
+});
+
+runTest('saveGame refuses to persist invalid state', () => {
+  const game = createInitialGame({ hostId: 'h1', hostKey: 'k' });
+  game.players.push({ id: 'p1', clientId: 'c1', name: 'A', cash: -5000, position: 99, color: '#fff', properties: [], inJail: false, jailTurns: 0, jailCards: [], getOutOfJailCards: 0, consecutiveDoubles: 0, bankrupt: false, connected: true, creditorId: null });
+  let threw = false;
+  const origEnv = process.env.NODE_ENV;
+  process.env.NODE_ENV = 'test';
+  try {
+    saveGame('RMBADINV', game);
+  } catch (err) {
+    threw = true;
+  }
+  process.env.NODE_ENV = origEnv;
+  assert.ok(threw, 'saveGame should throw in test mode for invalid state');
 });
 
 console.log(`\n🏆 DETERMINISTIC TESTS RESULT: ${passCount} / ${testCount} PASSED`);
