@@ -439,7 +439,8 @@ async function completeTurn(page, name) {
 
       const prodGlobals = await prodPage.evaluate(() => ({
         hasTriggerVisual: typeof window.__testTriggerVisual !== 'undefined',
-        hasTestSocket: typeof window.__testSocket !== 'undefined',
+        hasTestSocket:    typeof window.__testSocket !== 'undefined',
+        hasWindowSocket:  typeof window.socket !== 'undefined',
       }));
 
       if (!prodGlobals.hasTriggerVisual) {
@@ -452,6 +453,12 @@ async function completeTurn(page, name) {
         pass('window.__testSocket is absent from production build');
       } else {
         fail('window.__testSocket PRESENT in production build — must be gated behind import.meta.env.DEV');
+      }
+
+      if (!prodGlobals.hasWindowSocket) {
+        pass('window.socket is absent from production build');
+      } else {
+        fail('window.socket PRESENT in production build — must be gated behind import.meta.env.DEV');
       }
     } finally {
       if (prodPage) await prodPage.close();

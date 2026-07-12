@@ -629,10 +629,15 @@ describe('Indian Monopoly Unit Tests', () => {
   });
 
   // ------------------------------------------------------------------
-  // 9. Two-component shared socket: unmount one, other still reacts
+  // 9. Two mounted VisualEvents sharing one event-emitting mock socket:
+  //    unmount A, emit TRADE_OFFER, assert only B renders/reacts
   // ------------------------------------------------------------------
-  test('second VisualEvents listener survives after first component unmounts', async () => {
-    // Build a real multi-listener socket mock that tracks per-callback subscriptions
+  test('second VisualEvents listener survives after first component unmounts — DOM + audio both verified', async () => {
+    vi.useFakeTimers();
+
+    // Build an event-emitting mock socket: calling .emit(event, data)
+    // dispatches data to all registered listeners for that event,
+    // exactly as a real socket would.
     const listeners = {};
     const mockSocket = {
       on: vi.fn((event, cb) => {
@@ -644,16 +649,20 @@ describe('Indian Monopoly Unit Tests', () => {
           listeners[event] = listeners[event].filter(l => l !== cb);
         }
       }),
-      emit: vi.fn(),
+      // Calling emit dispatches to all registered listeners — real socket behaviour
+      emit: vi.fn((event, data) => {
+        (listeners[event] || []).forEach(cb => cb(data));
+      }),
     };
 
     const sharedPlayers = [
       { id: 'p1', name: 'Aarav', color: '#ef4444' },
-      { id: 'p2', name: 'Diya', color: '#3b82f6' },
+      { id: 'p2', name: 'Diya',  color: '#3b82f6' },
     ];
 
-    // Mount component A
-    const { unmount: unmountA } = render(
+    // Mount component A and B into separate containers so their DOM is distinct.
+    // We capture `container` (a real <div> in the document) to scope queries.
+    const { unmount: unmountA, container: containerA } = render(
       <VisualEvents
         socket={mockSocket}
         activeEvent={null}
@@ -663,8 +672,7 @@ describe('Indian Monopoly Unit Tests', () => {
       />
     );
 
-    // Mount component B (same socket)
-    const { unmount: unmountB } = render(
+    const { unmount: unmountB, container: containerB } = render(
       <VisualEvents
         socket={mockSocket}
         activeEvent={null}
@@ -674,34 +682,49 @@ describe('Indian Monopoly Unit Tests', () => {
       />
     );
 
-    // Both components registered their own trigger_visual listener
+    // Precondition: both components have registered their own trigger_visual listener
     expect(listeners['trigger_visual']?.length).toBe(2);
 
-    // Unmount component A — its listener must be removed via socket.off cleanup
+    // Unmount component A — its cleanup must call socket.off with its own callback
     unmountA();
 
-    // Exactly one listener should remain (component B's)
+    // Post-unmount: exactly one listener must remain (component B's)
     expect(listeners['trigger_visual']?.length).toBe(1);
 
-    // Clear any audio calls from mounting
+    // Neither component should be showing the overlay yet
+    expect(containerA.querySelector('[data-testid="trade-overlay"]')).toBeNull();
+    expect(containerB.querySelector('[data-testid="trade-overlay"]')).toBeNull();
+
+    // Reset audio mocks so we get a clean count from this point forward
     soundEngine.playTradeProposed.mockClear();
 
-    // Directly invoke the surviving listener with a TRADE_OFFER event
+    // Emit TRADE_OFFER through the socket — only B's listener should fire
     await act(async () => {
-      listeners['trigger_visual'][0]({
+      mockSocket.emit('trigger_visual', {
         type: 'TRADE_OFFER',
         initiatorName: 'Aarav',
-        targetName: 'Diya',
-        offerCash: 100,
-        offerPropertyIds: [],
-        requestCash: 0,
+        targetName:    'Diya',
+        offerCash:      100,
+        offerPropertyIds:   [],
+        requestCash:        0,
         requestPropertyIds: [],
       });
     });
 
-    // Component B's audio handler should have fired
+    // ── Audio assertion ──────────────────────────────────────────────
+    // Only the surviving component (B) should have played the sound — exactly once
     expect(soundEngine.playTradeProposed).toHaveBeenCalledTimes(1);
 
+    // ── DOM assertion ────────────────────────────────────────────────
+    // Component B's container must now render the trade overlay
+    const overlayB = containerB.querySelector('[data-testid="trade-overlay"]');
+    expect(overlayB).not.toBeNull();
+
+    // Component A was unmounted — its container has no overlay
+    const overlayA = containerA.querySelector('[data-testid="trade-overlay"]');
+    expect(overlayA).toBeNull();
+
+    vi.useRealTimers();
     unmountB();
   });
 
