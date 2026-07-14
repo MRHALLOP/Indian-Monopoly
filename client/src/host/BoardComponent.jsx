@@ -575,7 +575,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
 
   const lastRollSumRef = useRef(0);
   const isAnimatingRef = useRef(false);
-  const pendingVisualEventRef = useRef(null);
+  const visualEventQueueRef = useRef([]);
   const willMoveRef = useRef(false);
   const gameStateRef = useRef(null);
   // Tracks the landing key (tileName+playerName) that was already shown and dismissed,
@@ -584,41 +584,42 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
   const [activeVisualEvent, setActiveVisualEvent] = useState(null);
   const [hostErrorMsg, setHostErrorMsg] = useState(null);
 
-  const [isAudioMuted, setIsAudioMuted] = useState(true);
+  const isAudioMuted = false;
   const bgmVolume = 0.25;
   const sfxVolume = 0.4;
   const suppressGenericCashSoundUntilRef = useRef(0);
 
-  const [audioState, setAudioState] = useState('prompt');
-  const [audioPromptText, setAudioPromptText] = useState('Enable TV sound for procedurally synthesized ambient music and sound effects.');
-
-  const handleUnlockAudio = async () => {
-    const success = await soundEngine.unlock();
-    if (success) {
-      localStorage.setItem('monopoly_host_audio_enabled', 'true');
-      setAudioState('enabled');
-      setIsAudioMuted(false);
-    } else {
-      setAudioState('unavailable');
-      setAudioPromptText('Sound unavailable in this browser.');
+  const processVisualEventQueue = () => {
+    if (activeVisualEvent || isAnimatingRef.current || willMoveRef.current) {
+      return;
     }
+    if (visualEventQueueRef.current.length === 0) {
+      return;
+    }
+    const nextEvent = visualEventQueueRef.current.shift();
+    setActiveVisualEvent(nextEvent);
+    setTimeout(() => {
+      setActiveVisualEvent(null);
+    }, 4000);
   };
 
-  // Verify AudioContext lock status on mount
   useEffect(() => {
-    const checkAudio = async () => {
-      soundEngine.init();
-      const unlocked = soundEngine.isUnlocked();
-      const persisted = localStorage.getItem('monopoly_host_audio_enabled') === 'true';
-      if (unlocked && persisted) {
-        setAudioState('enabled');
-        setIsAudioMuted(false);
-      } else {
-        setAudioState('prompt');
-        setIsAudioMuted(true);
+    if (!activeVisualEvent) {
+      processVisualEventQueue();
+    }
+  }, [activeVisualEvent]);
+
+  // Verify and initialize AudioEngine silently on mount - audio is on by default
+  useEffect(() => {
+    const initAudio = async () => {
+      try {
+        soundEngine.init();
+        await soundEngine.unlock();
+      } catch (e) {
+        console.error('Failed to initialize AudioEngine silently:', e);
       }
     };
-    checkAudio();
+    initAudio();
   }, []);
 
   // Sync state changes with the SoundEngine safely
@@ -759,13 +760,8 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
           console.error('Error playing dice roll sound:', e);
         }
       } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER', 'JAIL'].includes(data.type)) {
-        const alwaysQueue = ['RENT', 'CARD_DRAW', 'JAIL'].includes(data.type);
-        if (alwaysQueue || isAnimatingRef.current || willMoveRef.current) {
-          pendingVisualEventRef.current = data;
-        } else {
-          setActiveVisualEvent(data);
-          setTimeout(() => setActiveVisualEvent(null), 4000);
-        }
+        visualEventQueueRef.current.push(data);
+        processVisualEventQueue();
       }
     };
 
@@ -909,13 +905,6 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     if (rolledPos !== finalPos) {
       await new Promise(resolve => setTimeout(resolve, 600));
       setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: finalPos } : p));
-      if (finalPos === 10) {
-        try {
-          soundEngine.playJail();
-        } catch (e) {
-          console.error('Error playing jail sound:', e);
-        }
-      }
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
@@ -923,15 +912,10 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     setVisualPlayers(targetGameState.players.map(p => ({ ...p })));
     setPrevPlayersState(targetGameState.players.map(p => ({ ...p })));
 
-    // 5. Open property card popup and trigger visual event if queued
-    if (pendingVisualEventRef.current) {
-      setActiveVisualEvent(pendingVisualEventRef.current);
-      pendingVisualEventRef.current = null;
-      setTimeout(() => setActiveVisualEvent(null), 4000);
-    }
     setVisualLandedTile(gameStateRef.current ? gameStateRef.current.landedTile : targetGameState.landedTile);
     isAnimatingRef.current = false;
     setIsAnimating(false);
+    processVisualEventQueue();
 
     lastRollSumRef.current = 0;
   }
@@ -966,11 +950,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     } else if (!isAnimatingRef.current) {
       if (willMoveRef.current) {
         willMoveRef.current = false;
-        if (pendingVisualEventRef.current) {
-          setActiveVisualEvent(pendingVisualEventRef.current);
-          pendingVisualEventRef.current = null;
-          setTimeout(() => setActiveVisualEvent(null), 4000);
-        }
+        processVisualEventQueue();
       }
       setVisualPlayers(gameState.players.map(p => ({ ...p })));
       // Bug fix: Only update visualLandedTile if the server explicitly cleared it (null)
@@ -1113,52 +1093,6 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
             ))}
           </div>
 
-          {/* Audio Activation Prompt */}
-          {audioState === 'prompt' && (
-            <div className="flex justify-between items-center bg-zinc-800/80 border border-zinc-700 px-6 py-4 rounded-2xl select-none font-sans">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-zinc-750 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-yellow-400 text-xl" style={{ fontSize: 20 }}>volume_up</span>
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-zinc-200">TV Sound is Disabled</h4>
-                  <p className="text-zinc-500 text-[10px] mt-0.5 font-medium">{audioPromptText}</p>
-                </div>
-              </div>
-              <button
-                onClick={handleUnlockAudio}
-                className="px-6 py-3 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-zinc-900 font-bold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer font-sans"
-              >
-                Enable TV sound
-              </button>
-            </div>
-          )}
-          {audioState === 'unavailable' && (
-            <div className="flex justify-between items-center bg-red-950/20 border border-red-900/50 px-6 py-4 rounded-2xl select-none font-sans">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-red-950/40 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-red-400 text-xl" style={{ fontSize: 20 }}>volume_off</span>
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-red-400">Sound Unavailable</h4>
-                  <p className="text-red-300/60 text-[10px] mt-0.5 font-medium">Sound unavailable in this browser.</p>
-                </div>
-              </div>
-            </div>
-          )}
-          {audioState === 'enabled' && (
-            <div className="flex justify-between items-center bg-emerald-950/20 border border-emerald-900/50 px-6 py-4 rounded-2xl select-none font-sans">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-950/40 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-emerald-400 text-xl" style={{ fontSize: 20 }}>volume_up</span>
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-emerald-400">TV Sound is Enabled</h4>
-                  <p className="text-emerald-300/60 text-[10px] mt-0.5 font-medium">Synthesized spatial ambient audio and sound effects active.</p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Status info (Start Game is controlled by Lobby Leader phone) */}
           <div className="flex justify-between items-center border-t border-zinc-800/80 pt-8 font-sans">

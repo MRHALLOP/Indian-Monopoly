@@ -420,8 +420,8 @@ runTest('inventory restoration and caps', () => {
   };
 
   declareBankruptcy(game, 'test-room', game.players[0]);
-  // Liquidating hotel adds 1 hotel and 4 houses back
-  assert.strictEqual(game.availableHouses, 32);
+  // Liquidating hotel adds 1 hotel back, but 0 houses (already returned to Bank on build)
+  assert.strictEqual(game.availableHouses, 28);
   assert.strictEqual(game.availableHotels, 12);
 });
 
@@ -857,12 +857,14 @@ runTest('join_game reconnects with matching clientId only', () => {
   assert.strictEqual(bob.id, 'p1-new', 'player id updated to new socket');
 });
 
-runTest('publicGameState strips hostKey and testDiceQueue', () => {
+runTest('publicGameState strips hostKey, testDiceQueue, chanceDeck, and chestDeck', () => {
   const game = createInitialGame({ hostId: 'h1', hostKey: 'secret-key' });
   game.testDiceQueue = [3, 4];
   const pub = publicGameState(game);
   assert.ok(!pub.hostKey, 'hostKey must be stripped');
   assert.ok(!pub.testDiceQueue, 'testDiceQueue must be stripped');
+  assert.ok(!pub.chanceDeck, 'chanceDeck must be stripped');
+  assert.ok(!pub.chestDeck, 'chestDeck must be stripped');
 });
 
 runTest('validateGame rejects invalid positions', () => {

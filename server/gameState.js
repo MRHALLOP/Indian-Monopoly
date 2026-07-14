@@ -6,7 +6,7 @@ const chanceDeckMaster = [
   { text: "Advance to GO. Collect ₹200.", type: "advance_go", deckType: "chance" },
   { text: "Advance to Mumbai.", type: "advance_mumbai", deckType: "chance" },
   { text: "Advance to Lucknow. If you pass GO, collect ₹200.", type: "advance_lucknow", deckType: "chance" },
-  { text: "Advance to Panaji. If you pass GO, collect ₹200.", type: "advance_panaji", deckType: "chance" },
+  { text: "Advance to Ludhiana. If you pass GO, collect ₹200.", type: "advance_ludhiana", deckType: "chance" },
   { text: "Advance to nearest Station. If owned, pay owner twice the rent.", type: "nearest_station", deckType: "chance" },
   { text: "Advance to nearest Station. If owned, pay owner twice the rent.", type: "nearest_station", deckType: "chance" },
   { text: "Advance to nearest Utility. If owned, throw dice and pay owner 10 times the throw.", type: "nearest_utility", deckType: "chance" },
@@ -326,6 +326,8 @@ function validateGame(game) {
 const PRIVATE_GAME_KEYS = new Set([
   'hostKey',
   'testDiceQueue',
+  'chanceDeck',
+  'chestDeck',
 ]);
 
 const PRIVATE_PLAYER_KEYS = new Set([

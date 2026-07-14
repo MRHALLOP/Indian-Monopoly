@@ -51,6 +51,10 @@ function readJsonFile(filePath) {
 }
 
 function saveGame(room, game) {
+  if (game && game.gameStatus === 'finished') {
+    deleteSave(room);
+    return;
+  }
   const savePath = getSavePath(room);
   const tempPath = `${savePath}.tmp`;
   const backupPath = `${savePath}.bak`;
@@ -271,7 +275,7 @@ function calculateAssets(game, player) {
       const houseCost = tile.houseCost || (tile.price / 2);
       total += houses * Math.floor(houseCost / 2);
     }
-    if (!state.mortgaged && houses === 0) {
+    if (houses === 0) {
       total += Math.floor(tile.price / 2);
     }
   }
@@ -358,7 +362,6 @@ function declareBankruptcy(game, room, player) {
       // Restore Bank inventory
       if (houses === 5) {
         game.availableHotels += 1;
-        game.availableHouses += 4;
       } else {
         game.availableHouses += houses;
       }
@@ -715,8 +718,8 @@ function executeCardAction(game, room, player, card, roll) {
     movePlayerTo(game, room, player, 39, true);
   } else if (card.type === 'advance_lucknow') {
     movePlayerTo(game, room, player, 21, true);
-  } else if (card.type === 'advance_panaji') {
-    movePlayerTo(game, room, player, 6, true);
+  } else if (card.type === 'advance_ludhiana') {
+    movePlayerTo(game, room, player, 11, true);
   } else if (card.type === 'advance_chennai') {
     movePlayerTo(game, room, player, 5, true);
   } else if (card.type === 'go_back_3') {
@@ -896,6 +899,11 @@ io.on('connection', (socket) => {
 
     if (game.gameStatus !== 'lobby') {
       socket.emit('action_error', 'Game has already started. New players cannot join.');
+      return;
+    }
+
+    if (game.players.length >= 4) {
+      socket.emit('action_error', 'The lobby is full (maximum 4 players).');
       return;
     }
 

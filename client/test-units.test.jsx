@@ -111,9 +111,9 @@ describe('Indian Monopoly Unit Tests', () => {
     // Verify Trade overlay is rendered (e.g. DEAL ON THE TABLE)
     expect(getByRole('heading', { level: 1, name: /DEAL ON THE TABLE/i })).toBeInTheDocument();
 
-    // Tick 32s (exceeding the 31s timeout)
+    // Tick 62s (exceeding the 61s timeout)
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(32000);
+      await vi.advanceTimersByTimeAsync(62000);
     });
     expect(queryByText(/DEAL ON THE TABLE/i)).not.toBeInTheDocument();
 
@@ -393,56 +393,31 @@ describe('Indian Monopoly Unit Tests', () => {
   });
 
   // ------------------------------------------------------------------
-  // 4. AudioEngine & Unlock UI (Success & Failure States)
+  // 4. AudioEngine & Unlock UI (Silent default-enabled Audio on Mount)
   // ------------------------------------------------------------------
-  test('BoardComponent audio unlock UI states', async () => {
+  test('BoardComponent audio unlocks silently and is enabled by default on mount', async () => {
     const mockSocket = {
       on: vi.fn(),
       off: vi.fn(),
       emit: vi.fn(),
     };
 
-    // 1. SUCCESS PATH
-    soundEngine.unlock.mockResolvedValue(true);
-    soundEngine.isUnlocked.mockReturnValue(false);
+    soundEngine.init.mockClear();
+    soundEngine.unlock.mockClear();
 
-    const { getByText, queryByText, getByRole, unmount } = render(
+    const { queryByText, unmount } = render(
       <BoardComponent socket={mockSocket} room="ABCD" />
     );
 
-    // Initial state: TV sound prompt visible
-    const unlockBtn = getByRole('button', { name: /Enable TV sound/i });
-    expect(unlockBtn).toBeInTheDocument();
+    // Prompt and buttons must not be visible on TV/Host screen
+    expect(queryByText(/Enable TV sound/i)).toBeNull();
+    expect(queryByText(/TV Sound is Disabled/i)).toBeNull();
 
-    // Click enable TV sound
-    await act(async () => {
-      unlockBtn.click();
-    });
+    // Verify AudioEngine init & unlock were invoked silently
+    expect(soundEngine.init).toHaveBeenCalled();
+    expect(soundEngine.unlock).toHaveBeenCalled();
 
-    // Verify it transitioned to enabled
-    expect(getByText(/TV Sound is Enabled/i)).toBeInTheDocument();
-    expect(queryByText(/Enable TV sound/i)).not.toBeInTheDocument();
-    expect(localStorage.getItem('monopoly_host_audio_enabled')).toBe('true');
     unmount();
-
-    // 2. FAILURE PATH
-    soundEngine.unlock.mockResolvedValue(false);
-    localStorage.removeItem('monopoly_host_audio_enabled');
-
-    const { getByText: getByTextFail, getByRole: getByRoleFail, unmount: unmountFail } = render(
-      <BoardComponent socket={mockSocket} room="ABCD" />
-    );
-
-    const unlockBtnFail = getByRoleFail('button', { name: /Enable TV sound/i });
-    expect(unlockBtnFail).toBeInTheDocument();
-
-    await act(async () => {
-      unlockBtnFail.click();
-    });
-
-    // Verify failure warning message is rendered
-    expect(getByTextFail(/Sound unavailable in this browser/i)).toBeInTheDocument();
-    unmountFail();
   });
 
   // ------------------------------------------------------------------

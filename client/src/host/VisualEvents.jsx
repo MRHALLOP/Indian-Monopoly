@@ -76,7 +76,7 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
         pendingTradeTimerRef.current = setTimeout(() => {
           setActiveTrade(current => current?.status === 'pending' ? null : current);
           pendingTradeTimerRef.current = null;
-        }, 31_000);
+        }, 61_000);
         return;
       }
 
@@ -949,6 +949,7 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
       {activeTrade && (
         <ExactTradeOverlay
           activeTrade={activeTrade}
+          tradeTimeLeft={60}
           boardState={boardState}
           players={players}
         />
