@@ -179,32 +179,32 @@ export default function AuctionController({ socket, room, myId, auctionState }) 
         {(!isWinning || isLastPlayer) && (
           <div className="flex flex-col gap-2 mt-1">
             {/* +10 */}
-            <button onClick={() => placeBid(10)}
+            <button onClick={() => placeBid(currentBid + 10)}
               className="w-full py-4 rounded-xl btn-press flex flex-col items-center"
               style={{ background: '#d3e4da', border: '2px solid #bacac1', boxShadow: '0 3px 0 0 #bacac1' }}>
-              <span className="text-2xl font-black" style={{ fontFamily: 'Montserrat', color: '#101e19' }}>+ ₹10</span>
-              <span className="text-xs font-bold" style={{ color: '#52625a', fontFamily: 'Plus Jakarta Sans' }}>
-                → Total: ₹{(currentBid + 10).toLocaleString()}
-              </span>
-            </button>
-            {/* +50 */}
-            <button onClick={() => placeBid(50)}
-              className="w-full py-3.5 rounded-xl btn-press flex flex-col items-center"
-              style={{ background: '#ffd8e7', border: '2px solid #ffafd4', boxShadow: '0 3px 0 0 #ffafd4' }}>
-              <span className="text-xl font-black" style={{ fontFamily: 'Montserrat', color: '#3d0026' }}>+ ₹50</span>
-              <span className="text-xs font-bold" style={{ color: '#88095c', fontFamily: 'Plus Jakarta Sans' }}>
-                Aggressive → ₹{(currentBid + 50).toLocaleString()}
-              </span>
-            </button>
-            {/* +100 */}
-            <button onClick={() => placeBid(100)}
-              className="w-full py-3 rounded-xl btn-press flex flex-col items-center"
-              style={{ background: '#9e216d', border: 'none', boxShadow: '0 3px 0 0 #6c164a, 0 8px 20px rgba(158,33,109,0.25)' }}>
-              <span className="text-lg font-black text-white" style={{ fontFamily: 'Montserrat' }}>+ ₹100</span>
-              <span className="text-xs font-bold text-pink-200" style={{ fontFamily: 'Plus Jakarta Sans' }}>
-                Dominate → ₹{(currentBid + 100).toLocaleString()}
-              </span>
-            </button>
+               <span className="text-2xl font-black" style={{ fontFamily: 'Montserrat', color: '#101e19' }}>+ ₹10</span>
+               <span className="text-xs font-bold" style={{ color: '#52625a', fontFamily: 'Plus Jakarta Sans' }}>
+                 → Total: ₹{(currentBid + 10).toLocaleString()}
+               </span>
+             </button>
+             {/* +50 */}
+             <button onClick={() => placeBid(currentBid + 50)}
+               className="w-full py-3.5 rounded-xl btn-press flex flex-col items-center"
+               style={{ background: '#ffd8e7', border: '2px solid #ffafd4', boxShadow: '0 3px 0 0 #ffafd4' }}>
+               <span className="text-xl font-black" style={{ fontFamily: 'Montserrat', color: '#3d0026' }}>+ ₹50</span>
+               <span className="text-xs font-bold" style={{ color: '#88095c', fontFamily: 'Plus Jakarta Sans' }}>
+                 Aggressive → ₹{(currentBid + 50).toLocaleString()}
+               </span>
+             </button>
+             {/* +100 */}
+             <button onClick={() => placeBid(currentBid + 100)}
+               className="w-full py-3 rounded-xl btn-press flex flex-col items-center"
+               style={{ background: '#9e216d', border: 'none', boxShadow: '0 3px 0 0 #6c164a, 0 8px 20px rgba(158,33,109,0.25)' }}>
+               <span className="text-lg font-black text-white" style={{ fontFamily: 'Montserrat' }}>+ ₹100</span>
+               <span className="text-xs font-bold text-pink-200" style={{ fontFamily: 'Plus Jakarta Sans' }}>
+                 Dominate → ₹{(currentBid + 100).toLocaleString()}
+               </span>
+             </button>
             {/* Custom bid */}
             <div className="flex gap-2">
               <input type="number" min="10" step="10" placeholder="Custom ₹..."
