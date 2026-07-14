@@ -42,7 +42,7 @@ function PropertyCardPopup({ landedTile }) {
     playerName, playerColor, context, amount, ownerName, houseCost
   } = landedTile;
 
-  if (context === 'rent_due' || context === 'chance' || context === 'community_chest' || tileName === 'Chance' || tileName === 'Community Chest') {
+  if (context === 'rent_due' || context === 'chance' || context === 'community_chest' || tileName === 'Chance' || tileName === 'Community Chest' || tileName === 'Go to Jail' || tileName === 'Jail' || context === 'jail') {
     return null;
   }
 
@@ -759,7 +759,13 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         } catch (e) {
           console.error('Error playing dice roll sound:', e);
         }
-      } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER', 'JAIL'].includes(data.type)) {
+      } else if (data.type === 'JAIL') {
+        try {
+          soundEngine.playJail();
+        } catch (e) {
+          console.error('Error playing jail sound:', e);
+        }
+      } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER'].includes(data.type)) {
         visualEventQueueRef.current.push(data);
         processVisualEventQueue();
       }
