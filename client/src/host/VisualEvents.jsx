@@ -853,7 +853,24 @@ export default function VisualEvents({ socket, activeEvent, setActiveEvent, boar
             );
           })()}
 
-          {event.type === 'JAIL' && null}
+          {event.type === 'JAIL' && (() => {
+            let jailReasonText = 'Sent directly to Jail!';
+            if (event.reason === 'go_to_jail') jailReasonText = 'Landed on Go to Jail!';
+            else if (event.reason === 'three_doubles') jailReasonText = 'Rolled three doubles in a row!';
+            else if (event.reason === 'card') jailReasonText = 'Go Directly to Jail card!';
+            return (
+              <motion.div
+                initial={{ opacity: 0, scale: 3 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                className="bg-zinc-900 w-full py-12 text-center border-y-[16px] border-black shadow-[0_0_100px_rgba(0,0,0,0.8)]"
+              >
+                <h1 className="text-8xl font-black text-red-500 tracking-widest uppercase">SENT TO JAIL!</h1>
+                <p className="text-4xl text-zinc-100 font-bold mt-4 uppercase" title={event.player}>{event.player && event.player.length > 12 ? event.player.slice(0, 12) + '...' : event.player}</p>
+                <p className="text-xl text-zinc-400 font-semibold mt-2 font-mono uppercase">{jailReasonText}</p>
+              </motion.div>
+            );
+          })()}
 
           {event.type === 'BANKRUPT' && (
             <motion.div

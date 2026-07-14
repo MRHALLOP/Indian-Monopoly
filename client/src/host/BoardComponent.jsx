@@ -598,9 +598,15 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     }
     const nextEvent = visualEventQueueRef.current.shift();
     setActiveVisualEvent(nextEvent);
+    
+    let duration = 4000;
+    if (nextEvent.type === 'JAIL') duration = 2500;
+    else if (nextEvent.type === 'CARD_DRAW') duration = 3000;
+    else if (['RENT', 'BUY', 'BUILD'].includes(nextEvent.type)) duration = 3000;
+
     setTimeout(() => {
       setActiveVisualEvent(null);
-    }, 4000);
+    }, duration);
   };
 
   useEffect(() => {
@@ -750,6 +756,11 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       }
 
       if (data.type === 'DICE_ROLL') {
+        // Clear all previous visual events and overlays
+        visualEventQueueRef.current = [];
+        setActiveVisualEvent(null);
+        setVisualLandedTile(null);
+
         lastRollSumRef.current = data.dice[0] + data.dice[1];
         setActiveDice(data.dice);
         setTimeout(() => setActiveDice(null), 2000);
@@ -759,13 +770,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
         } catch (e) {
           console.error('Error playing dice roll sound:', e);
         }
-      } else if (data.type === 'JAIL') {
-        try {
-          soundEngine.playJail();
-        } catch (e) {
-          console.error('Error playing jail sound:', e);
-        }
-      } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER'].includes(data.type)) {
+      } else if (['RENT', 'BUY', 'BUILD', 'BANKRUPT', 'CARD_DRAW', 'GAME_OVER', 'JAIL'].includes(data.type)) {
         visualEventQueueRef.current.push(data);
         processVisualEventQueue();
       }
