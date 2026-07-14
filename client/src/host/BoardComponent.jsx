@@ -912,11 +912,39 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       await new Promise(resolve => setTimeout(resolve, 250)); // 250ms per cell
     }
 
-    // 3. Jump to jail cell if needed
+    // 3. Jump to jail cell or slide to card destination
     if (rolledPos !== finalPos) {
-      await new Promise(resolve => setTimeout(resolve, 600));
-      setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: finalPos } : p));
-      await new Promise(resolve => setTimeout(resolve, 300));
+      if (finalPos === 10) {
+        // Jail jump is always an instant jump
+        await new Promise(resolve => setTimeout(resolve, 600));
+        setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: finalPos } : p));
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } else {
+        // Card-based movement: slide cell-by-cell to finalPos
+        await new Promise(resolve => setTimeout(resolve, 500));
+        let curr = rolledPos;
+        const isBackward = (rolledPos - finalPos + 40) % 40 === 3;
+        
+        if (isBackward) {
+          while (curr !== finalPos) {
+            curr = (curr - 1 + 40) % 40;
+            setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
+            try {
+              soundEngine.playTokenStep();
+            } catch (e) { /* ignore */ }
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        } else {
+          while (curr !== finalPos) {
+            curr = (curr + 1) % 40;
+            setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
+            try {
+              soundEngine.playTokenStep();
+            } catch (e) { /* ignore */ }
+            await new Promise(resolve => setTimeout(resolve, 250));
+          }
+        }
+      }
     }
 
     // 4. Update visual state
