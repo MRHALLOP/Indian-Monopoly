@@ -302,6 +302,7 @@ function chargePlayer(game, room, debtor, amount, creditorId) {
       debtor.creditorId = creditorId;
       logEvent(game, `> ${debtor.name} needs to raise ₹${remainder} to ${creditorId ? game.players.find(p => p.id === creditorId).name : 'the Bank'}.`);
       io.to(debtor.id).emit('raise_money', { debt: remainder, assetValue: assets });
+      broadcastUpdate(room, game);
     } else {
       debtor.creditorId = creditorId;
       declareBankruptcy(game, room, debtor);
@@ -568,9 +569,13 @@ function endAuction(game, room) {
     game.boardState[propId].mortgaged = false;
     logEvent(game, `> ${winner.name} won the auction for ₹${finalPrice}.`);
     io.to(room).emit('auction_end', { winner: winner.name, winnerColor: winner.color, propertyId: propId, finalPrice: finalPrice });
-    broadcastUpdate(room, game);
     winner.creditorId = null;
     checkBankruptcy(game, room, winner.id);
+    // broadcastUpdate is called inside chargePlayer/declareBankruptcy if the winner goes into debt;
+    // otherwise broadcast here to show the property acquisition.
+    if (!winner.needsToRaiseMoney && !winner.bankrupt) {
+      broadcastUpdate(room, game);
+    }
   } else {
     logEvent(game, `> Auction ended with no winner. Property remains unsold.`);
     io.to(room).emit('auction_end', { propertyId: propId, finalPrice: 0 });
