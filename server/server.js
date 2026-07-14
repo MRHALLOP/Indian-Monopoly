@@ -1352,7 +1352,8 @@ io.on('connection', (socket) => {
     } else {
       if (bid <= game.auction.currentBid) { io.to(player.id).emit('action_error', `Bid must be greater than current bid of ₹${game.auction.currentBid}.`); return; }
     }
-    if (bid > player.cash) { io.to(player.id).emit('action_error', `Bid cannot exceed your cash of ₹${player.cash}.`); return; }
+    const maxBid = player.cash + calculateAssets(game, player);
+    if (bid > maxBid) { io.to(player.id).emit('action_error', `Bid cannot exceed your maximum buying power (cash + assets) of ₹${maxBid}.`); return; }
     
     game.auction.currentBid = bid;
     game.auction.highestBidder = player.id;

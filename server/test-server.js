@@ -298,7 +298,7 @@ runTest('over-cash bid rejected (via actual Socket.IO events)', () => {
 
   sockets[0]._handlers['start_game']({ room: 'ROOM7' });
 
-  // Set Aarav's cash to 100
+  // Set Aarav's cash to 100, no properties — max bid = 100
   game.players[0].cash = 100;
 
   // Setup active auction
@@ -310,10 +310,35 @@ runTest('over-cash bid rejected (via actual Socket.IO events)', () => {
     activePlayers: ['p1', 'p2']
   };
 
-  // Aarav attempts to bid 150 (exceeds cash)
+  // Aarav bids 150 — exceeds cash+assets (no properties), rejected
   sockets[0]._handlers['place_bid']({ room: 'ROOM7', amount: 150 });
+  assert.strictEqual(game.auction.currentBid, 50, 'bid over cash+assets should be rejected');
+  assert.ok(emittedEvents.some(ee => ee.target === 'p1' && ee.event === 'action_error' && ee.data.includes('exceed')));
 
-  assert.strictEqual(game.auction.currentBid, 50);
+  // Now give Aarav an unmortgaged property — max bid becomes cash + assets
+  const testPropId = 3;
+  game.players[0].properties = [testPropId];
+  game.boardState[testPropId] = { owner: 'p1', mortgaged: false, houses: 0 };
+
+  // Ask calculateAssets what the mortgage value is
+  const assetVal = calculateAssets(game, game.players[0]);
+  const maxAllowed = 100 + assetVal;
+
+  // Reset auction bid so Aarav can bid again
+  game.auction.currentBid = 50;
+  game.auction.highestBidder = 'p2';
+  emittedEvents.length = 0;
+
+  // Aarav bids maxAllowed — within cash+assets, should be ACCEPTED
+  sockets[0]._handlers['place_bid']({ room: 'ROOM7', amount: maxAllowed });
+  assert.strictEqual(game.auction.currentBid, maxAllowed, 'bid within cash+assets should be accepted');
+
+  // Aarav bids maxAllowed+1 — exceeds total buying power, rejected
+  game.auction.currentBid = 50;
+  game.auction.highestBidder = 'p2';
+  emittedEvents.length = 0;
+  sockets[0]._handlers['place_bid']({ room: 'ROOM7', amount: maxAllowed + 1 });
+  assert.strictEqual(game.auction.currentBid, 50, 'bid exceeding cash+assets should be rejected');
   assert.ok(emittedEvents.some(ee => ee.target === 'p1' && ee.event === 'action_error' && ee.data.includes('exceed')));
 });
 
