@@ -959,6 +959,35 @@ runTest('saveGame refuses to persist invalid state', () => {
   assert.ok(threw, 'saveGame should throw in test mode for invalid state');
 });
 
+runTest('calculateAssets handles mortgaged, unmortgaged, and housed properties correctly', () => {
+  const { game } = setupTestGame('RMASSETS', [
+    { id: 'p1', name: 'A', color: '#ef4444', clientId: 'cid-a' }
+  ]);
+  const player = game.players[0];
+  
+  // Give player Mumbai (index 39, price 400, houseCost 200) and Panaji (index 6, price 100, houseCost 50)
+  player.properties = [39, 6];
+  
+  // 1. Initially, properties are not mortgaged and have 0 houses.
+  // Mumbai value: price/2 = 200. Panaji value: price/2 = 50. Total: 250.
+  game.boardState[39] = { owner: 'p1', mortgaged: false, houses: 0 };
+  game.boardState[6] = { owner: 'p1', mortgaged: false, houses: 0 };
+  assert.strictEqual(calculateAssets(game, player), 250, 'asset value of two unmortgaged properties with 0 houses');
+
+  // 2. Mortgage Panaji.
+  // Mumbai value: 200. Panaji value: 0 (mortgaged). Total: 200.
+  game.boardState[6].mortgaged = true;
+  assert.strictEqual(calculateAssets(game, player), 200, 'asset value with one property mortgaged');
+
+  // 3. Unmortgage Panaji and add 2 houses to Mumbai.
+  // Panaji value: 50.
+  // Mumbai value: 2 houses * (houseCost/2 = 100) + (price/2 = 200) = 400.
+  // Total: 450.
+  game.boardState[6].mortgaged = false;
+  game.boardState[39].houses = 2;
+  assert.strictEqual(calculateAssets(game, player), 450, 'asset value with houses on one property');
+});
+
 console.log(`\n🏆 DETERMINISTIC TESTS RESULT: ${passCount} / ${testCount} PASSED`);
 if (passCount !== testCount) {
   process.exit(1);

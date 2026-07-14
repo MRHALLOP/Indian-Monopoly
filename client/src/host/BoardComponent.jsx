@@ -872,7 +872,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
 
   // Auto-dismiss landing cards after 3 seconds for non-actionable tiles
   useEffect(() => {
-    if (visualLandedTile && visualLandedTile.context !== 'for_sale') {
+    if (visualLandedTile && visualLandedTile.context !== 'for_sale' && !activeVisualEvent) {
       const timer = setTimeout(() => {
         // Mark this landing event as dismissed so subsequent manage_property game_updates
         // don't re-show the same tile popup (Bug 1 fix)
@@ -881,7 +881,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [visualLandedTile]);
+  }, [visualLandedTile, activeVisualEvent]);
 
   // Helper for sequential visual token moves
   async function runSequencedMovement(playerId, oldPos, finalPos, targetGameState) {
@@ -1223,7 +1223,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       {/* Property Card Popup Overlay (Interactive) */}
       <div className="absolute inset-0 pointer-events-none z-[100]">
         <AnimatePresence mode="wait">
-           {visualLandedTile && (
+           {visualLandedTile && !activeVisualEvent && (
              <PropertyCardPopup key={visualLandedTile.tileId} landedTile={visualLandedTile} />
            )}
            {visualLandedTile?.context === 'jail' && (

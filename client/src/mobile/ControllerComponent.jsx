@@ -114,7 +114,7 @@ function RaiseMoneyScreen({ socket, gameState, me, room = 'ABCD' }) {
           </span>
         </div>
         <div className="text-5xl font-black" style={{ fontFamily: 'Montserrat', color: '#1b1c1c' }}>
-          ₹{Math.abs(me?.cash || 0).toLocaleString()}
+          ₹{(me?.debtAmount || 0).toLocaleString()}
         </div>
         <p className="text-sm mt-1" style={{ color: '#55414a', fontFamily: 'Plus Jakarta Sans' }}>
           Raise funds to continue playing.

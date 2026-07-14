@@ -274,8 +274,8 @@ function calculateAssets(game, player) {
     if (houses > 0) {
       const houseCost = tile.houseCost || (tile.price / 2);
       total += houses * Math.floor(houseCost / 2);
-    }
-    if (houses === 0) {
+      total += Math.floor(tile.price / 2);
+    } else if (!state.mortgaged) {
       total += Math.floor(tile.price / 2);
     }
   }
