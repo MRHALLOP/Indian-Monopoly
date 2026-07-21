@@ -636,30 +636,33 @@ class SoundEngine {
   playBankrupt() {
     this.init();
     if (!this.ctx || this.muted) return;
+    try {
+      const now = this.ctx.currentTime;
+      const notes = [392, 329.63, 261.63, 196];
+      notes.forEach((frequency, index) => {
+        const start = now + index * 0.16;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        const filter = this.ctx.createBiquadFilter();
 
-    const now = this.ctx.currentTime;
-    const notes = [392, 329.63, 261.63, 196];
-    notes.forEach((frequency, index) => {
-      const start = now + index * 0.16;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
-      const filter = this.ctx.createBiquadFilter();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(frequency, start);
+        osc.frequency.exponentialRampToValueAtTime(frequency * 0.72, start + 0.45);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(520, start);
+        gain.gain.setValueAtTime(0.0001, start);
+        gain.gain.exponentialRampToValueAtTime(0.055, start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.72);
 
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(frequency, start);
-      osc.frequency.exponentialRampToValueAtTime(frequency * 0.72, start + 0.45);
-      filter.type = 'lowpass';
-      filter.frequency.setValueAtTime(520, start);
-      gain.gain.setValueAtTime(0.0001, start);
-      gain.gain.exponentialRampToValueAtTime(0.055, start + 0.025);
-      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.72);
-
-      osc.connect(filter);
-      filter.connect(gain);
-      gain.connect(this.sfxVolume);
-      osc.start(start);
-      osc.stop(start + 0.8);
-    });
+        osc.connect(filter);
+        filter.connect(gain);
+        gain.connect(this.sfxVolume);
+        osc.start(start);
+        osc.stop(start + 0.8);
+      });
+    } catch (e) {
+      console.warn('Bankrupt sound error:', e);
+    }
   }
 
   playBuild() {

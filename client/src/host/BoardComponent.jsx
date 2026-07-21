@@ -615,17 +615,25 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
     }
   }, [activeVisualEvent]);
 
-  // Verify and initialize AudioEngine silently on mount - audio is on by default
+  // Initialize AudioEngine on mount & attach user gesture unlock listener
   useEffect(() => {
-    const initAudio = async () => {
+    const handleGesture = async () => {
       try {
         soundEngine.init();
         await soundEngine.unlock();
-      } catch (e) {
-        console.error('Failed to initialize AudioEngine silently:', e);
-      }
+      } catch (_e) { /* ignore */ }
+      window.removeEventListener('pointerdown', handleGesture);
+      window.removeEventListener('keydown', handleGesture);
     };
-    initAudio();
+
+    window.addEventListener('pointerdown', handleGesture);
+    window.addEventListener('keydown', handleGesture);
+    handleGesture(); // Attempt initial unlock
+
+    return () => {
+      window.removeEventListener('pointerdown', handleGesture);
+      window.removeEventListener('keydown', handleGesture);
+    };
   }, []);
 
   // Sync state changes with the SoundEngine safely
@@ -752,7 +760,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
 
     const onTriggerVisual = (data) => {
       if (['RENT', 'BUY', 'CARD_DRAW', 'TRADE_ACCEPTED', 'TRADE_DECLINED', 'BANKRUPT', 'GAME_OVER', 'JAIL'].includes(data.type)) {
-        suppressGenericCashSoundUntilRef.current = Date.now() + 1500;
+        suppressGenericCashSoundUntilRef.current = Date.now() + 4500;
       }
 
       if (data.type === 'DICE_ROLL') {
@@ -912,37 +920,39 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
       await new Promise(resolve => setTimeout(resolve, 250)); // 250ms per cell
     }
 
-    // 3. Jump to jail cell or slide to card destination
+    // 3. Move cell-by-cell to final destination (Jail or Card destination)
     if (rolledPos !== finalPos) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      let curr = rolledPos;
+
+      // Movement direction logic:
+      // - Go to Jail (finalPos === 10): if past Jail (rolledPos > 10), slide backwards; if before Jail (rolledPos < 10), slide forward. Direct path without crossing GO.
+      // - Go back 3 spaces: slide 3 spaces backwards.
+      // - Advance cards (Lucknow, Mumbai, Ludhiana, Chennai Central, Station, Utility, GO): slide forward clockwise around the entire board.
+      let isBackward = false;
       if (finalPos === 10) {
-        // Jail jump is always an instant jump
-        await new Promise(resolve => setTimeout(resolve, 600));
-        setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: finalPos } : p));
-        await new Promise(resolve => setTimeout(resolve, 300));
+        isBackward = rolledPos > 10;
+      } else if ((rolledPos - finalPos + 40) % 40 === 3) {
+        isBackward = true;
+      }
+
+      if (isBackward) {
+        while (curr !== finalPos) {
+          curr = (curr - 1 + 40) % 40;
+          setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
+          try {
+            soundEngine.playTokenStep();
+          } catch (_e) { /* ignore */ }
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
       } else {
-        // Card-based movement: slide cell-by-cell to finalPos
-        await new Promise(resolve => setTimeout(resolve, 500));
-        let curr = rolledPos;
-        const isBackward = (rolledPos - finalPos + 40) % 40 === 3;
-        
-        if (isBackward) {
-          while (curr !== finalPos) {
-            curr = (curr - 1 + 40) % 40;
-            setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
-            try {
-              soundEngine.playTokenStep();
-            } catch (_e) { /* ignore */ }
-            await new Promise(resolve => setTimeout(resolve, 250));
-          }
-        } else {
-          while (curr !== finalPos) {
-            curr = (curr + 1) % 40;
-            setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
-            try {
-              soundEngine.playTokenStep();
-            } catch (_e) { /* ignore */ }
-            await new Promise(resolve => setTimeout(resolve, 250));
-          }
+        while (curr !== finalPos) {
+          curr = (curr + 1) % 40;
+          setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
+          try {
+            soundEngine.playTokenStep();
+          } catch (_e) { /* ignore */ }
+          await new Promise(resolve => setTimeout(resolve, 250));
         }
       }
     }
@@ -1467,7 +1477,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
                     {/* Regular Property Tiles */}
                     {!isCorner && hasColorBar && (
                       <>
-                        <div className={`w-full h-[22%] ${isTopRow ? 'border-t-2' : 'border-b-2'} border-black box-border flex items-center justify-center gap-[2px] relative overflow-visible`} style={{backgroundColor: hexColor}}>
+                        <div className={`w-full h-[22%] ${isTopRow ? 'border-t-2' : 'border-b-2'} border-black box-border flex items-center justify-center gap-[2px] relative overflow-visible`} style={{backgroundColor: hexColor, ...(isTopRow ? { transform: 'rotate(180deg)' } : {})}}>
                           {tileState.houses > 0 && tileState.houses < 5 && (
                             [...Array(tileState.houses)].map((_, i) => (
                               <motion.div

@@ -1026,7 +1026,10 @@ io.on('connection', (socket) => {
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
-    const player = game.players.find(p => p.id === socket.id);
+    const currentPlayer = game.players[game.currentTurn];
+    if (!currentPlayer || currentPlayer.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; }
+    if (game.hasRolled) { io.to(socket.id).emit('action_error', "You cannot pay bail after rolling on this turn."); return; }
+    const player = currentPlayer;
     if (player && player.inJail) {
       if (player.cash >= 50) {
         player.cash -= 50;
@@ -1050,7 +1053,10 @@ io.on('connection', (socket) => {
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
-    const player = game.players.find(p => p.id === socket.id);
+    const currentPlayer = game.players[game.currentTurn];
+    if (!currentPlayer || currentPlayer.id !== socket.id) { io.to(socket.id).emit('action_error', "It's not your turn."); return; }
+    if (game.hasRolled) { io.to(socket.id).emit('action_error', "You cannot use a jail card after rolling on this turn."); return; }
+    const player = currentPlayer;
     if (player && player.inJail && player.jailCards && player.jailCards.length > 0) {
       const deckType = player.jailCards.shift();
       player.getOutOfJailCards = player.jailCards.length;

@@ -577,8 +577,8 @@ describe('Indian Monopoly Unit Tests', () => {
     // Verify playCoinClink was NOT called due to suppression
     expect(soundEngine.playCoinClink).not.toHaveBeenCalled();
 
-    // Advance mock time by 2000ms (beyond the 1500ms suppression window)
-    mockTime += 2000;
+    // Advance mock time by 5000ms (beyond the 4500ms suppression window)
+    mockTime += 5000;
 
     // Trigger another cash update
     act(() => {
