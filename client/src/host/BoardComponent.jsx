@@ -931,7 +931,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
             setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
             try {
               soundEngine.playTokenStep();
-            } catch (e) { /* ignore */ }
+            } catch (_e) { /* ignore */ }
             await new Promise(resolve => setTimeout(resolve, 250));
           }
         } else {
@@ -940,7 +940,7 @@ export default function BoardComponent({ socket, room = 'ABCD' }) {
             setVisualPlayers(prev => prev.map(p => p.id === playerId ? { ...p, position: curr } : p));
             try {
               soundEngine.playTokenStep();
-            } catch (e) { /* ignore */ }
+            } catch (_e) { /* ignore */ }
             await new Promise(resolve => setTimeout(resolve, 250));
           }
         }

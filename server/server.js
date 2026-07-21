@@ -7,6 +7,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { CITIES, COLOR_GROUPS } = require('./constants');
 const { createInitialGame, migrateGame, validateGame, publicGameState } = require('./gameState');
+const { allow } = require('./rateLimit');
 
 const SAVES_DIR = path.join(__dirname, 'game_saves');
 if (!fs.existsSync(SAVES_DIR)) fs.mkdirSync(SAVES_DIR, { recursive: true });
@@ -113,22 +114,25 @@ process.on('unhandledRejection', (reason) => {
   console.error('[CRASH] Unhandled Rejection:', reason);
 });
 
+function isAllowedOrigin(origin, callback) {
+  if (!origin) return callback(null, true);
+  const extra = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const isLocal = origin.startsWith('http://localhost:') ||
+                  origin.startsWith('http://127.0.0.1:') ||
+                  /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(origin);
+  if (isLocal || extra.includes(origin)) {
+    callback(null, true);
+  } else {
+    callback(new Error('CORS blocked'));
+  }
+}
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: isAllowedOrigin }));
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
-      const isLocal = origin.startsWith('http://localhost:') ||
-                      origin.startsWith('http://127.0.0.1:') ||
-                      /^http:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[0-1])\.\d+\.\d+)(:\d+)?$/.test(origin);
-      if (isLocal) {
-        callback(null, true);
-      } else {
-        callback(new Error('CORS blocked'));
-      }
-    }
+    origin: isAllowedOrigin
   }
 });
 
@@ -799,7 +803,16 @@ function drawAndResolveCard(game, room, player, deckType, roll) {
 }
 
 io.on('connection', (socket) => {
+  const checkRate = (cost = 1) => {
+    if (!allow(socket, cost)) {
+      socket.emit('action_error', 'Slow down. Too many requests.');
+      return false;
+    }
+    return true;
+  };
+
   socket.on('create_room', (payload) => {
+    if (!checkRate()) return;
     const rawRoom = payload && typeof payload === 'object' ? payload.room : payload;
     const room = requireRoom(rawRoom, socket);
     if (!room) return;
@@ -857,6 +870,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_game', ({ room: rawRoom, name, color, clientId }) => {
+    if (!checkRate()) return;
     const room = requireRoom(rawRoom, socket);
     if (!room) return;
     const game = rooms[room];
@@ -927,6 +941,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('roll_dice', ({ room }) => {
+    if (!checkRate()) return;
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
@@ -989,6 +1004,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('end_turn', ({ room }) => {
+    if (!checkRate()) return;
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
@@ -1050,6 +1066,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('buy_property', ({ room, propertyId }) => {
+    if (!checkRate()) return;
     const game = rooms[room];
     if (!game) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }
@@ -1210,6 +1227,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('initiate_trade', (payload) => {
+    if (!checkRate()) return;
     const { room: rawRoom, targetId } = payload || {};
     const room = requireRoom(rawRoom, socket);
     if (!room) return;
@@ -1342,6 +1360,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('place_bid', ({ room, amount }) => {
+    if (!checkRate()) return;
     const game = rooms[room];
     if (!game || !game.auction?.status) return;
     if (game.gameStatus !== 'active') { io.to(socket.id).emit('action_error', 'Game is not active.'); return; }

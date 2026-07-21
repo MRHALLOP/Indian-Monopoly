@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import io from 'socket.io-client';
-import BoardComponent from './host/BoardComponent';
-import ControllerComponent from './mobile/ControllerComponent';
+
+const BoardComponent = lazy(() => import('./host/BoardComponent'));
+const ControllerComponent = lazy(() => import('./mobile/ControllerComponent'));
 
 const socketProtocol = window.location.protocol === 'https:' ? 'https:' : 'http:';
 const socketUrl = import.meta.env.VITE_SOCKET_URL
@@ -135,7 +136,17 @@ function App() {
   return (
     <>
       {banner}
-      {mode === 'host' ? <BoardComponent socket={socket} room={room} /> : <ControllerComponent socket={socket} />}
+      <Suspense fallback={
+        <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fcf9f8' }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: '50%',
+            border: '3px solid #dbbfc9', borderTopColor: '#9e216d',
+            animation: 'spin 1s linear infinite'
+          }} />
+        </div>
+      }>
+        {mode === 'host' ? <BoardComponent socket={socket} room={room} /> : <ControllerComponent socket={socket} />}
+      </Suspense>
     </>
   );
 }
